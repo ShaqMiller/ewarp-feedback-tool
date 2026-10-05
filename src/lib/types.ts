@@ -15,12 +15,14 @@ export type Feature = {
   id: string;
   name: string;
   vendorIds: string[]; // vendors that already offer it; empty = nobody offers it yet
+  known?: boolean; // true = one of the survey's 12 rating topics; false = a new ask the AI found
 };
 
 // One thing a response said about a feature (filled in by AI).
 export type Mention = {
   featureId: string;
   kind: Sentiment;
+  quote?: string; // the exact words the AI matched
 };
 
 // One Google Form survey response.
@@ -31,6 +33,8 @@ export type SurveyResponse = {
   likes: string;
   dislikes: string;
   wants: string;
+  comments?: string;
+  ratings?: Record<string, number>; // form question -> 1 to 4
   submittedAt: string; // ISO date
   mentions?: Mention[]; // missing until AI has read the response
 };

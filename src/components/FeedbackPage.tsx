@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { DataSource } from "@/hooks/useFeedbackMap";
 import { FeedbackMap } from "./FeedbackMap";
@@ -15,7 +16,12 @@ export function FeedbackPage() {
   return (
     <main className="flex min-h-screen flex-col gap-8 p-10">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-4xl font-bold text-[#f3f4f6]">The feedback map</h1>
+        <div className="flex flex-wrap items-baseline gap-5">
+          <h1 className="text-4xl font-bold text-[#f3f4f6]">The feedback map</h1>
+          <Link href="/dechante" className="text-sm text-[#8b949e] hover:text-[#e6e8eb]">
+            Dechante&apos;s view →
+          </Link>
+        </div>
 
         <div
           role="radiogroup"
