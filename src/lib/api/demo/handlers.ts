@@ -126,13 +126,19 @@ function vendorItems(projectId: Id, filters?: ProjectFilters): (VendorListItem &
     .filter((v) => v.projectId === projectId)
     .map((v) => {
       const featureIds = db.offerings.filter((o) => o.vendorId === v.id).map((o) => o.featureId);
+      const own = responses.filter((r) => r.vendorId === v.id);
+      const sentiment = emptyCounts();
+      for (const m of mentionsFor(new Set(own.map((r) => r.id)))) sentiment[m.kind] += 1;
       return {
         id: v.id,
         name: v.name,
         featureIds,
-        responseCount: responses.filter((r) => r.vendorId === v.id).length,
+        responseCount: own.length,
         requestsMet: featureIds.filter((id) => requested.has(id)).length,
         requestsTotal: requested.size,
+        featureCount: featureIds.length,
+        exclusiveCount: featureIds.filter((id) => offeredBy(id).length === 1).length,
+        sentiment,
       };
     });
 }
@@ -424,6 +430,25 @@ export const demoApi: FeedbackApi = {
           .map((m) => ({ feature: { id: m.featureId, name: db.features.find((f) => f.id === m.featureId)!.name }, kind: m.kind })),
       }));
     return { items: limit ? all.slice(0, limit) : all, total: all.length };
+  },
+
+  async getGraph(projectId, filters) {
+    await sleep();
+    projectOr404(projectId);
+    const rs = responsesFor(projectId, filters);
+    const vendorIds = vendorIdsOf(projectId);
+    return {
+      responses: rs.map(toSurveyResponse),
+      features: db.features
+        .filter((f) => f.projectId === projectId)
+        .map((f) => ({ id: f.id, name: f.name, coverage: coverageOf(f.id, vendorIds), vendorIds: offeredBy(f.id) })),
+      vendors: db.vendors.filter((v) => v.projectId === projectId).map((v) => ({ id: v.id, name: v.name })),
+      links: mentionsFor(new Set(rs.map((r) => r.id))).map((m) => ({
+        responseId: m.responseId,
+        featureId: m.featureId,
+        kind: m.kind,
+      })),
+    };
   },
 
   async listActivity(projectId, { limit = 10 } = {}) {

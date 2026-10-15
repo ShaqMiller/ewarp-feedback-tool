@@ -24,6 +24,7 @@ import type {
   List,
   Project,
   ProjectFilters,
+  ProjectGraph,
   ProjectListItem,
   ProjectSummary,
   ResponsesByWeek,
@@ -72,6 +73,7 @@ export type FeedbackApi = {
     vendorId: Id,
     query?: ProjectFilters & { limit?: number },
   ): Promise<List<VendorResponse>>;
+  getGraph(projectId: Id, filters?: ProjectFilters): Promise<ProjectGraph>;
   listActivity(projectId: Id, query?: { limit?: number }): Promise<List<ActivityEvent>>;
 };
 
@@ -100,6 +102,7 @@ export const api: FeedbackApi = {
   listVendorRequests: cache(source.listVendorRequests),
   listVendorFeatures: cache(source.listVendorFeatures),
   listVendorResponses: cache(source.listVendorResponses),
+  getGraph: cache(source.getGraph),
   listActivity: cache(source.listActivity),
 };
 

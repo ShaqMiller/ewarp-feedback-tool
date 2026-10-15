@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import { GROUP_LABELS, type Group, type Sentiment, type Vendor } from "@/lib/api/types";
 import { cn, formatDate, plural } from "@/lib/format";
@@ -13,7 +14,7 @@ type Props = { projectId: string; vendorId: string };
 
 const KINDS: Sentiment[] = ["like", "dislike", "want"];
 
-export function VendorHeader({ vendor, featureCount }: { vendor: Vendor; featureCount: number }) {
+export function VendorHeader({ vendor, featureCount, action }: { vendor: Vendor; featureCount: number; action?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-[22px] font-semibold tracking-[-0.015em]">{vendor.name}</h1>
@@ -27,6 +28,7 @@ export function VendorHeader({ vendor, featureCount }: { vendor: Vendor; feature
           Offers {vendor.featureIds.length} of {plural(featureCount, "feature")}
         </Pill>
       )}
+      {action && <div className="ml-auto">{action}</div>}
     </div>
   );
 }

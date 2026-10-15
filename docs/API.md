@@ -217,10 +217,25 @@ Params:
 - `sort` is `fit` (default: `requestsMet` descending, then `responseCount` descending, then name) or `name`.
 - `limit` is optional.
 - Filters: yes.
+Each item also includes:
+- `featureCount`: how many features the vendor offers
+- `exclusiveCount`: how many of those no other vendor offers
+- `sentiment`: likes, dislikes and wants from **its own users**
+
+The Vendors page shows all three. The dashboard ignores them.
 ```json
 {
   "items": [
-    { "id": "vnd_3", "name": "Vendor 3", "responseCount": 3, "requestsMet": 2, "requestsTotal": 8 }
+    {
+      "id": "vnd_3",
+      "name": "Vendor 3",
+      "responseCount": 3,
+      "requestsMet": 2,
+      "requestsTotal": 8,
+      "featureCount": 8,
+      "exclusiveCount": 4,
+      "sentiment": { "like": 2, "dislike": 1, "want": 3 }
+    }
   ],
   "total": 3
 }
@@ -292,6 +307,34 @@ Params:
 }
 ```
 
+### `GET /projects/:projectId/graph`
+Used by: the Relationship map, where `group` comes from its chips.
+
+This is the one view that draws every response, feature and vendor at once, so it gets them all in a single request instead of many small ones.
+- `responses` use the same shape as elsewhere, including the answer text, which the map's detail drawer shows.
+- `links` has one entry per mention.
+- Features with no links and no vendors aren't drawn.
+- Filters: yes. They filter responses and therefore links. Features and vendors are always the whole project.
+```json
+{
+  "responses": [
+    {
+      "id": "rsp_2", "surveyId": "srv_1", "group": "pm",
+      "vendor": { "id": "vnd_2", "name": "Vendor 2" },
+      "submittedAt": "2026-09-26T12:00:00.000Z",
+      "likes": "Search finds old documents quickly.",
+      "dislikes": "Notifications are noisy.",
+      "wants": "Shared comments on documents.",
+      "analyzed": true
+    }
+  ],
+  "features": [{ "id": "ftr_5", "name": "Notifications", "coverage": "all", "vendorIds": ["vnd_1", "vnd_2", "vnd_3"] }],
+  "vendors": [{ "id": "vnd_2", "name": "Vendor 2" }],
+  "links": [{ "responseId": "rsp_2", "featureId": "ftr_5", "kind": "dislike" }]
+}
+```
+If projects grow to thousands of responses, this endpoint is the one to paginate or pre-aggregate. The rest of the app doesn't depend on it.
+
 ### `GET /projects/:projectId/activity?limit=3`
 Used by: Dashboard → "Recent activity". Newest first. `limit` defaults to 10. Every event has `id`, `type` and `occurredAt`.
 ```json
@@ -318,4 +361,3 @@ These will follow the same conventions when their pages are built:
 - `GET /projects/:projectId/responses`, with filters, pagination and `vendorId` / `featureId` filters
 - `GET /projects/:projectId/responses/:responseId`
 - `GET /projects/:projectId/surveys` and `GET /projects/:projectId/surveys/:surveyId`
-- `GET /projects/:projectId/graph`, the nodes and edges for the relationship map

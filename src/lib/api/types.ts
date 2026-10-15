@@ -162,6 +162,9 @@ export type VendorListItem = {
   responseCount: number;
   requestsMet: number; // project requests this vendor offers
   requestsTotal: number;
+  featureCount: number; // features it offers
+  exclusiveCount: number; // of those, features no other vendor offers
+  sentiment: SentimentCounts; // feedback from its own users
 };
 
 export type VendorSort = "fit" | "name";
@@ -193,6 +196,15 @@ export type ResponseMention = { feature: { id: Id; name: string }; kind: Sentime
 
 // GET /projects/:projectId/vendors/:vendorId/responses
 export type VendorResponse = SurveyResponse & { mentions: ResponseMention[] };
+
+// GET /projects/:projectId/graph
+// Everything the relationship map draws, in one request: it's the one view that needs every node at once.
+export type ProjectGraph = {
+  responses: SurveyResponse[];
+  features: { id: Id; name: string; coverage: Coverage; vendorIds: Id[] }[];
+  vendors: { id: Id; name: string }[];
+  links: { responseId: Id; featureId: Id; kind: Sentiment }[]; // one per mention
+};
 
 // GET /projects/:projectId/activity
 export type ActivityEvent =

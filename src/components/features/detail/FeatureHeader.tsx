@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Feature, SentimentCounts } from "@/lib/api/types";
 import { Pill } from "@/components/ui/primitives";
 
@@ -26,12 +27,13 @@ function FeedbackPill({ sentiment }: { sentiment: SentimentCounts }) {
   return <Pill tone={only}>{only === "like" ? "Liked" : only === "dislike" ? "Disliked" : "Requested"}</Pill>;
 }
 
-export function FeatureHeader({ feature, vendorCount }: { feature: Feature; vendorCount: number }) {
+export function FeatureHeader({ feature, vendorCount, action }: { feature: Feature; vendorCount: number; action?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-[22px] font-semibold tracking-[-0.015em]">{feature.name}</h1>
       <CoveragePill offered={feature.vendorIds.length} total={vendorCount} />
       <FeedbackPill sentiment={feature.sentiment} />
+      {action && <div className="ml-auto">{action}</div>}
     </div>
   );
 }

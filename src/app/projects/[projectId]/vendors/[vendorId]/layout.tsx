@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { api, orNotFound } from "@/lib/api";
 import { TopBar } from "@/components/shell/TopBar";
 import { RouteTabs } from "@/components/ui/RouteTabs";
+import { ShowInMapLink } from "@/components/map/ShowInMapLink";
 import { VendorHeader } from "@/components/vendors/detail/OverviewCards";
 
 type Props = LayoutProps<"/projects/[projectId]/vendors/[vendorId]">;
@@ -32,7 +33,11 @@ export default async function VendorLayout({ children, params }: Props) {
       />
       <main className="flex flex-col gap-5 px-4 py-5 sm:px-6 sm:py-[22px]">
         <div className="flex flex-col gap-4">
-          <VendorHeader vendor={vendor} featureCount={project.counts.features} />
+          <VendorHeader
+            vendor={vendor}
+            featureCount={project.counts.features}
+            action={<ShowInMapLink projectId={project.id} focusId={vendor.id} />}
+          />
           <RouteTabs
             base={`/projects/${project.id}/vendors/${vendor.id}`}
             label="Vendor sections"

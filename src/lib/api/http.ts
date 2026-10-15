@@ -43,6 +43,7 @@ function createHttpApi(baseUrl: string): FeedbackApi {
     listVendorRequests: (projectId, vendorId, filters) => get(`${v(projectId, vendorId)}/requests`, filters),
     listVendorFeatures: (projectId, vendorId, filters) => get(`${v(projectId, vendorId)}/features`, filters),
     listVendorResponses: (projectId, vendorId, query) => get(`${v(projectId, vendorId)}/responses`, query),
+    getGraph: (projectId, filters) => get(`${p(projectId)}/graph`, filters),
     listActivity: (projectId, query) => get(`${p(projectId)}/activity`, query),
   };
 }

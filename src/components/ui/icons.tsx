@@ -75,6 +75,8 @@ export const ChevronDownIcon = icon(<path d="M7 10l5 5 5-5" />);
 export const ChevronRightIcon = icon(<path d="M10 7l5 5-5 5" />);
 export const CheckIcon = icon(<path d="M5 12.5l4.5 4.5L19 7.5" />);
 export const MinusIcon = icon(<path d="M6 12h12" />);
+export const PlusIcon = icon(<path d="M12 6v12M6 12h12" />);
+export const ScanIcon = icon(<path d="M4 9V5.5A1.5 1.5 0 015.5 4H9M15 4h3.5A1.5 1.5 0 0120 5.5V9M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15M9 20H5.5A1.5 1.5 0 014 18.5V15" />);
 export const SearchIcon = icon(
   <>
     <circle cx="11" cy="11" r="6" />
