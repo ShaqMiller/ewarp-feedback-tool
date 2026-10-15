@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/format";
+import { Skeleton } from "./primitives";
 
 type CardProps = {
   title?: string;
@@ -20,6 +21,19 @@ export function Card({ title, action, className, children }: CardProps) {
       )}
       {children}
     </section>
+  );
+}
+
+// Loading state for a card with text rows; shows the real title so the layout doesn't jump.
+export function CardSkeleton({ title, lines = 3 }: { title: string; lines?: number }) {
+  return (
+    <Card title={title}>
+      <div className="grid gap-3">
+        {Array.from({ length: lines }, (_, i) => (
+          <Skeleton key={i} className={cn("h-3.5", i === lines - 1 && "w-2/3")} />
+        ))}
+      </div>
+    </Card>
   );
 }
 

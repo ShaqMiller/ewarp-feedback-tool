@@ -227,7 +227,70 @@ Params:
 ```
 
 ### `GET /projects/:projectId/vendors/:vendorId`
-Used by: the vendor page `/projects/:projectId/vendors/:vendorId`. Same shape as a list item, plus `featureIds` (the features it offers). Returns 404 if the vendor isn't in the project.
+Used by: the vendor page header ("Meets X of Y requests", "Offers X of Y features") and the Responses tab count. Same shape as a list item, plus `featureIds` (the features it offers). Returns 404 if the vendor isn't in the project, and so do all of the vendor sub-routes below.
+
+### `GET /projects/:projectId/vendors/:vendorId/summary`
+Used by: Vendor page → "Summary". Same shape as the feature summary: `{ "text": "…" | null, "basedOn": 3, "generatedAt": "…" | null }`.
+
+### `GET /projects/:projectId/vendors/:vendorId/requests`
+Used by: Vendor page → "Requests". Returns every requested feature in the project (at least one want) and whether this vendor offers it. Met requests come first, then the most wanted. `wants` counts want mentions across the whole project. Filters: yes.
+```json
+{
+  "items": [
+    { "feature": { "id": "ftr_5", "name": "Notifications" }, "offers": true, "wants": 1 },
+    { "feature": { "id": "ftr_2", "name": "PDF export" }, "offers": false, "wants": 1 }
+  ],
+  "total": 8
+}
+```
+
+### `GET /projects/:projectId/vendors/:vendorId/features`
+Used by: Vendor page → "Features offered". Returns the features this vendor offers.
+- `exclusive` is true when no other vendor in the project offers the feature. The UI shows it as "Only here".
+- `sentiment` counts only feedback from **this vendor's own users**.
+- Items with the most feedback come first.
+- Filters: yes.
+```json
+{
+  "items": [{ "id": "ftr_11", "name": "File sync", "exclusive": true, "sentiment": { "like": 0, "dislike": 1, "want": 0 } }],
+  "total": 8
+}
+```
+
+### `GET /projects/:projectId/vendors/:vendorId/responses?group=pm`
+Used by:
+- Vendor page → "What its users said" quotes and the like/dislike/want tiles
+- "Who responded"
+- The Responses tab, where `group` comes from the group chips
+
+Returns responses about this vendor, newest first. Each item is the survey response shape plus `mentions`: every feature AI linked to the response, and how. `mentions` is empty until AI has read the response (`analyzed: false`).
+
+Params:
+- `limit` is optional.
+- Filters: yes.
+```json
+{
+  "items": [
+    {
+      "id": "rsp_6",
+      "surveyId": "srv_1",
+      "group": "other",
+      "vendor": { "id": "vnd_3", "name": "Vendor 3" },
+      "submittedAt": "2026-10-07T12:00:00.000Z",
+      "likes": "Works well offline.",
+      "dislikes": "Syncing is slow on large files.",
+      "wants": "Notifications only for things I own.",
+      "analyzed": true,
+      "mentions": [
+        { "feature": { "id": "ftr_10", "name": "Offline mode" }, "kind": "like" },
+        { "feature": { "id": "ftr_11", "name": "File sync" }, "kind": "dislike" },
+        { "feature": { "id": "ftr_5", "name": "Notifications" }, "kind": "want" }
+      ]
+    }
+  ],
+  "total": 3
+}
+```
 
 ### `GET /projects/:projectId/activity?limit=3`
 Used by: Dashboard → "Recent activity". Newest first. `limit` defaults to 10. Every event has `id`, `type` and `occurredAt`.

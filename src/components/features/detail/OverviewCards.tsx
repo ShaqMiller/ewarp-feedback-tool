@@ -2,20 +2,16 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { GROUP_LABELS, type Group, type Sentiment } from "@/lib/api/types";
 import { cn, formatDate, plural } from "@/lib/format";
-import { Card, CardLink, CardMeta } from "@/components/ui/Card";
-import { CheckIcon, MinusIcon, SparkleIcon } from "@/components/ui/icons";
+import { Card, CardLink, CardMeta, CardSkeleton } from "@/components/ui/Card";
+import { CheckIcon, MinusIcon } from "@/components/ui/icons";
+import { AiSummaryCard, SentimentTiles } from "@/components/ui/insights";
 import { EmptyState, Pill, Skeleton } from "@/components/ui/primitives";
+import { Quote } from "@/components/responses/Quote";
 import { KIND_FIELD, KIND_LABEL } from "@/components/responses/ResponseCard";
 
 type Props = { projectId: string; featureId: string };
 
 const KINDS: Sentiment[] = ["like", "dislike", "want"];
-const KIND_TILE: Record<Sentiment, string> = {
-  like: "bg-like-soft text-like",
-  dislike: "bg-dislike-soft text-dislike",
-  want: "bg-want-soft text-want",
-};
-const KIND_BORDER: Record<Sentiment, string> = { like: "border-like", dislike: "border-dislike", want: "border-want" };
 const KIND_STROKE: Record<Sentiment, { color: string; dash?: string }> = {
   like: { color: "var(--color-like)" },
   dislike: { color: "var(--color-dislike)", dash: "5 4" },
@@ -23,41 +19,10 @@ const KIND_STROKE: Record<Sentiment, { color: string; dash?: string }> = {
 };
 const GROUP_SHORT: Record<Group, string> = { pm: "PM", sponsor: "Sponsor", other: "Other" };
 
-function CardSkeleton({ title, lines = 3 }: { title: string; lines?: number }) {
-  return (
-    <Card title={title}>
-      <div className="grid gap-3">
-        {Array.from({ length: lines }, (_, i) => (
-          <Skeleton key={i} className={cn("h-3.5", i === lines - 1 && "w-2/3")} />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
 // ---- Summary: GET /features/:featureId/summary ----
 
 export async function SummaryCard({ projectId, featureId }: Props) {
-  const summary = await api.getFeatureSummary(projectId, featureId);
-  const title = (
-    <span className="flex items-center gap-1.5">
-      <SparkleIcon className="size-[15px] text-accent" />
-      Summary
-    </span>
-  );
-  return (
-    <section className="min-w-0 rounded-[10px] border border-line bg-surface p-4">
-      <header className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-[13.5px] font-semibold">{title}</h2>
-        {summary.text && <CardMeta>From {plural(summary.basedOn, "response")}</CardMeta>}
-      </header>
-      {summary.text ? (
-        <p className="text-[14px] leading-relaxed">{summary.text}</p>
-      ) : (
-        <p className="text-[13px] text-muted">AI hasn&apos;t summarized this feature yet. A summary appears once it has read the responses that mention it.</p>
-      )}
-    </section>
-  );
+  return <AiSummaryCard summary={await api.getFeatureSummary(projectId, featureId)} subject="feature" />;
 }
 
 export const SummarySkeleton = () => <CardSkeleton title="Summary" />;
@@ -77,28 +42,17 @@ export async function FeedbackCard({ projectId, featureId }: Props) {
 
   return (
     <Card title="What people said" action={<CardMeta>{plural(feature.mentions, "mention")}</CardMeta>}>
-      <div className="mb-4 grid grid-cols-3 gap-2.5">
-        {KINDS.map((k) => {
-          const n = feature.sentiment[k];
-          return (
-            <div key={k} className={cn("rounded-lg px-3 py-2.5", n > 0 ? KIND_TILE[k] : "bg-chip text-faint")}>
-              <div className="text-xs">{KIND_LABEL[k]}s</div>
-              <div className="text-xl font-semibold tabular-nums">{n}</div>
-            </div>
-          );
-        })}
+      <div className="mb-4">
+        <SentimentTiles counts={feature.sentiment} />
       </div>
       {quotes.length === 0 ? (
         <EmptyState title="No responses mention this yet" />
       ) : (
         <ul className="grid gap-3.5">
           {quotes.map(({ r, kind, text }) => (
-            <li key={`${r.id}-${kind}`} className={cn("border-l-2 py-0.5 pl-3", KIND_BORDER[kind])}>
-              <q className="text-[13.5px]">{text}</q>
-              <p className="mt-1 text-[11.5px] text-muted">
-                {KIND_LABEL[kind]} · {GROUP_LABELS[r.group]} · {r.vendor.name} · {formatDate(r.submittedAt)}
-              </p>
-            </li>
+            <Quote key={`${r.id}-${kind}`} kind={kind} text={text}>
+              {KIND_LABEL[kind]} · {GROUP_LABELS[r.group]} · {r.vendor.name} · {formatDate(r.submittedAt)}
+            </Quote>
           ))}
         </ul>
       )}

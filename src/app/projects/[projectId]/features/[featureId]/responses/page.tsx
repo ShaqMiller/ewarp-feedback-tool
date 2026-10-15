@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Sentiment } from "@/lib/api/types";
-import { cn } from "@/lib/format";
 import { AsyncSlot } from "@/components/ui/AsyncSlot";
-import { EmptyState, Skeleton } from "@/components/ui/primitives";
-import { KIND_LABEL, ResponseCard } from "@/components/responses/ResponseCard";
+import { FilterChips } from "@/components/ui/FilterChips";
+import { EmptyState } from "@/components/ui/primitives";
+import { KIND_LABEL, ResponseCard, ResponseListSkeleton } from "@/components/responses/ResponseCard";
 
 type Props = PageProps<"/projects/[projectId]/features/[featureId]/responses">;
 
@@ -53,32 +52,8 @@ export default async function FeatureResponsesPage({ params, searchParams }: Pro
 
   return (
     <div className="flex flex-col gap-3">
-      <nav aria-label="Filter responses" className="flex flex-wrap gap-1.5">
-        {filters.map((f) => (
-          <Link
-            key={f.label}
-            href={f.href}
-            scroll={false}
-            aria-current={f.active ? "page" : undefined}
-            className={cn(
-              "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
-              f.active ? "border-ink bg-ink text-surface" : "border-line bg-surface text-muted hover:text-ink",
-            )}
-          >
-            {f.label}
-            <span className={cn("tabular-nums", f.active ? "text-surface/70" : "text-faint")}>{f.count}</span>
-          </Link>
-        ))}
-      </nav>
-      <AsyncSlot
-        title="Responses"
-        fallback={
-          <div className="grid gap-3">
-            <Skeleton className="h-36 rounded-[10px]" />
-            <Skeleton className="h-36 rounded-[10px]" />
-          </div>
-        }
-      >
+      <FilterChips label="Filter responses" chips={filters} />
+      <AsyncSlot title="Responses" fallback={<ResponseListSkeleton />}>
         <ResponseList projectId={projectId} featureId={featureId} kind={kind} />
       </AsyncSlot>
     </div>

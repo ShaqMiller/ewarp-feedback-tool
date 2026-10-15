@@ -114,8 +114,8 @@ export type Feature = FeatureListItem & {
   createdAt: string;
 };
 
-// GET /projects/:projectId/features/:featureId/summary
-export type FeatureSummary = {
+// GET /projects/:projectId/features/:featureId/summary and /vendors/:vendorId/summary
+export type AiSummary = {
   text: string | null; // null until AI has written one
   basedOn: number; // responses the summary was written from
   generatedAt: string | null;
@@ -170,6 +170,29 @@ export type VendorSort = "fit" | "name";
 export type Vendor = VendorListItem & {
   featureIds: Id[]; // features it offers
 };
+
+// GET /projects/:projectId/vendors/:vendorId/requests
+// Every requested feature in the project, and whether this vendor offers it.
+export type VendorRequest = {
+  feature: { id: Id; name: string };
+  offers: boolean;
+  wants: number; // want mentions across the whole project
+};
+
+// GET /projects/:projectId/vendors/:vendorId/features
+// Features this vendor offers, with what its own users said about each.
+export type VendorFeature = {
+  id: Id;
+  name: string;
+  exclusive: boolean; // no other vendor in the project offers it
+  sentiment: SentimentCounts;
+};
+
+// A feature AI linked to a response, and how.
+export type ResponseMention = { feature: { id: Id; name: string }; kind: Sentiment };
+
+// GET /projects/:projectId/vendors/:vendorId/responses
+export type VendorResponse = SurveyResponse & { mentions: ResponseMention[] };
 
 // GET /projects/:projectId/activity
 export type ActivityEvent =

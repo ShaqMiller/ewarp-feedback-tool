@@ -15,7 +15,7 @@ import type {
   FeatureList,
   FeatureResponse,
   FeatureSort,
-  FeatureSummary,
+  AiSummary,
   FeatureVendor,
   FeatureView,
   Id,
@@ -28,7 +28,10 @@ import type {
   ProjectSummary,
   ResponsesByWeek,
   Vendor,
+  VendorFeature,
   VendorListItem,
+  VendorRequest,
+  VendorResponse,
   VendorSort,
 } from "./types";
 
@@ -48,7 +51,7 @@ export type FeedbackApi = {
   getCoverage(projectId: Id): Promise<CoverageBreakdown>;
   listFeatures(projectId: Id, query?: FeatureQuery): Promise<FeatureList>;
   getFeature(projectId: Id, featureId: Id): Promise<Feature>;
-  getFeatureSummary(projectId: Id, featureId: Id): Promise<FeatureSummary>;
+  getFeatureSummary(projectId: Id, featureId: Id): Promise<AiSummary>;
   listFeatureResponses(
     projectId: Id,
     featureId: Id,
@@ -61,6 +64,14 @@ export type FeedbackApi = {
     query?: ProjectFilters & { sort?: VendorSort; limit?: number },
   ): Promise<List<VendorListItem>>;
   getVendor(projectId: Id, vendorId: Id): Promise<Vendor>;
+  getVendorSummary(projectId: Id, vendorId: Id): Promise<AiSummary>;
+  listVendorRequests(projectId: Id, vendorId: Id, filters?: ProjectFilters): Promise<List<VendorRequest>>;
+  listVendorFeatures(projectId: Id, vendorId: Id, filters?: ProjectFilters): Promise<List<VendorFeature>>;
+  listVendorResponses(
+    projectId: Id,
+    vendorId: Id,
+    query?: ProjectFilters & { limit?: number },
+  ): Promise<List<VendorResponse>>;
   listActivity(projectId: Id, query?: { limit?: number }): Promise<List<ActivityEvent>>;
 };
 
@@ -85,6 +96,10 @@ export const api: FeedbackApi = {
   listRelatedFeatures: cache(source.listRelatedFeatures),
   listVendors: cache(source.listVendors),
   getVendor: cache(source.getVendor),
+  getVendorSummary: cache(source.getVendorSummary),
+  listVendorRequests: cache(source.listVendorRequests),
+  listVendorFeatures: cache(source.listVendorFeatures),
+  listVendorResponses: cache(source.listVendorResponses),
   listActivity: cache(source.listActivity),
 };
 

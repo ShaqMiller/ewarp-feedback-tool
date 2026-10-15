@@ -162,6 +162,14 @@ export const featureSummaries: Record<Id, string> = {
   ftr_20: "Both responses ask for reminders before certificates expire. No vendor offers this, and it is the clearest gap in the project.",
 };
 
+// AI-written vendor summaries. Vendors missing here have no summary yet.
+export const vendorSummaries: Record<Id, string> = {
+  vnd_1: "Vendor 1's users like the most features: the dashboard, permission controls and report sharing all get praise. Its weak spots are the mobile view and fit: it meets only one of the eight requests, notifications.",
+  vnd_2: "Vendor 2 meets two requests, single sign-on and notifications, and is the only vendor with templates. Its users like search and templates but find notifications noisy.",
+  vnd_3: "Vendor 3 offers the most features, including four no one else has: version history, offline mode, file sync and a timeline view. It meets two requests, version history and notifications. Slow syncing of large files is its main complaint.",
+  vnd_6: "Vendor A covers the course catalog and certificate tracking. Its users like the catalog but struggle to see upcoming expiries, and it doesn't offer expiry reminders, the project's most requested feature.",
+};
+
 // A feature is created when AI first finds it in a response.
 export const features: FeatureRow[] = featureSeed.map(([id, projectId, name]) => {
   const firstSeen = mentions

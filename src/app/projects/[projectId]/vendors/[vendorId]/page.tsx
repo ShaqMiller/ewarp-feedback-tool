@@ -1,40 +1,44 @@
-import type { Metadata } from "next";
-import { api, orNotFound } from "@/lib/api";
-import { plural } from "@/lib/format";
-import { Pill } from "@/components/ui/primitives";
-import { SectionPlaceholder } from "@/components/shell/SectionPlaceholder";
+import { AsyncSlot } from "@/components/ui/AsyncSlot";
+import {
+  OfferedFeaturesCard,
+  OfferedFeaturesSkeleton,
+  RequestsCard,
+  RequestsSkeleton,
+  RespondentsCard,
+  RespondentsSkeleton,
+  VendorFeedbackCard,
+  VendorFeedbackSkeleton,
+  VendorSummaryCard,
+  VendorSummarySkeleton,
+} from "@/components/vendors/detail/OverviewCards";
 
-export async function generateMetadata({ params }: PageProps<"/projects/[projectId]/vendors/[vendorId]">): Promise<Metadata> {
-  const { projectId, vendorId } = await params;
-  const vendor = await api.getVendor(projectId, vendorId).catch(() => null);
-  return { title: vendor?.name ?? "Vendor" };
-}
-
-// Uses GET /projects/:projectId and GET /projects/:projectId/vendors/:vendorId
-export default async function VendorPage({ params }: PageProps<"/projects/[projectId]/vendors/[vendorId]">) {
-  const { projectId, vendorId } = await params;
-  const [project, vendor] = await Promise.all([
-    orNotFound(api.getProject(projectId)),
-    orNotFound(api.getVendor(projectId, vendorId)),
-  ]);
+// Vendor overview. Each card loads its own endpoint and streams in independently.
+export default async function VendorOverviewPage({ params }: PageProps<"/projects/[projectId]/vendors/[vendorId]">) {
+  const ids = await params;
 
   return (
-    <SectionPlaceholder
-      crumbs={[
-        { label: project.name, href: `/projects/${project.id}` },
-        { label: "Vendors", href: `/projects/${project.id}/vendors` },
-        { label: vendor.name },
-      ]}
-      title={vendor.name}
-      badges={
-        <>
-          <Pill>{plural(vendor.featureIds.length, "feature")} offered</Pill>
-          <Pill>
-            {vendor.requestsMet} of {vendor.requestsTotal} requests met
-          </Pill>
-        </>
-      }
-      description="The full vendor page (features offered, gaps, and what its users said) is coming soon."
-    />
+    <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
+      <div className="grid gap-4">
+        <AsyncSlot title="Summary" fallback={<VendorSummarySkeleton />}>
+          <VendorSummaryCard {...ids} />
+        </AsyncSlot>
+        <AsyncSlot title="What its users said" fallback={<VendorFeedbackSkeleton />}>
+          <VendorFeedbackCard {...ids} />
+        </AsyncSlot>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+        <AsyncSlot title="Requests" fallback={<RequestsSkeleton />}>
+          <RequestsCard {...ids} />
+        </AsyncSlot>
+        <AsyncSlot title="Features offered" fallback={<OfferedFeaturesSkeleton />}>
+          <OfferedFeaturesCard {...ids} />
+        </AsyncSlot>
+        <div className="md:col-span-2 lg:col-span-1">
+          <AsyncSlot title="Who responded" fallback={<RespondentsSkeleton />}>
+            <RespondentsCard {...ids} />
+          </AsyncSlot>
+        </div>
+      </div>
+    </div>
   );
 }

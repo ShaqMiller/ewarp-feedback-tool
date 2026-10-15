@@ -44,6 +44,13 @@ function featureOr404(projectId: Id, featureId: Id) {
   return feature;
 }
 
+function vendorOr404(projectId: Id, vendorId: Id) {
+  projectOr404(projectId);
+  const vendor = db.vendors.find((v) => v.id === vendorId && v.projectId === projectId);
+  if (!vendor) throw new ApiError(404, `Vendor ${vendorId} not found in project ${projectId}`);
+  return vendor;
+}
+
 function responsesMentioning(featureId: Id) {
   const ids = new Set(db.mentions.filter((m) => m.featureId === featureId).map((m) => m.responseId));
   return db.responses.filter((r) => ids.has(r.id));
@@ -350,6 +357,73 @@ export const demoApi: FeedbackApi = {
     const vendor = vendorItems(projectId).find((v) => v.id === vendorId);
     if (!vendor) throw new ApiError(404, `Vendor ${vendorId} not found in project ${projectId}`);
     return vendor;
+  },
+
+  async getVendorSummary(projectId, vendorId) {
+    await sleep();
+    vendorOr404(projectId, vendorId);
+    const rs = responsesFor(projectId).filter((r) => r.vendorId === vendorId);
+    const text = db.vendorSummaries[vendorId] ?? null;
+    return {
+      text,
+      basedOn: text ? rs.length : 0,
+      generatedAt: text ? (rs.map((r) => r.analyzedAt ?? "").sort().at(-1) ?? null) : null,
+    };
+  },
+
+  async listVendorRequests(projectId, vendorId, filters) {
+    await sleep();
+    vendorOr404(projectId, vendorId);
+    const ms = mentionsFor(new Set(responsesFor(projectId, filters).map((r) => r.id)));
+    const wants = new Map<Id, number>();
+    for (const m of ms) if (m.kind === "want") wants.set(m.featureId, (wants.get(m.featureId) ?? 0) + 1);
+    const items = [...wants.entries()]
+      .map(([featureId, count]) => ({
+        feature: { id: featureId, name: db.features.find((f) => f.id === featureId)!.name },
+        offers: offeredBy(featureId).includes(vendorId),
+        wants: count,
+      }))
+      // Met requests first, then the most wanted.
+      .sort((a, b) => Number(b.offers) - Number(a.offers) || b.wants - a.wants || a.feature.name.localeCompare(b.feature.name));
+    return { items, total: items.length };
+  },
+
+  async listVendorFeatures(projectId, vendorId, filters) {
+    await sleep();
+    vendorOr404(projectId, vendorId);
+    const own = new Set(responsesFor(projectId, filters).filter((r) => r.vendorId === vendorId).map((r) => r.id));
+    const items = db.offerings
+      .filter((o) => o.vendorId === vendorId)
+      .map((o) => {
+        const sentiment = emptyCounts();
+        for (const m of db.mentions) if (m.featureId === o.featureId && own.has(m.responseId)) sentiment[m.kind] += 1;
+        return {
+          id: o.featureId,
+          name: db.features.find((f) => f.id === o.featureId)!.name,
+          exclusive: offeredBy(o.featureId).length === 1,
+          sentiment,
+        };
+      })
+      .sort((a, b) => {
+        const total = (f: typeof a) => f.sentiment.like + f.sentiment.dislike + f.sentiment.want;
+        return total(b) - total(a) || Number(b.exclusive) - Number(a.exclusive) || a.name.localeCompare(b.name);
+      });
+    return { items, total: items.length };
+  },
+
+  async listVendorResponses(projectId, vendorId, { limit, ...filters } = {}) {
+    await sleep();
+    vendorOr404(projectId, vendorId);
+    const all = responsesFor(projectId, filters)
+      .filter((r) => r.vendorId === vendorId)
+      .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+      .map((r) => ({
+        ...toSurveyResponse(r),
+        mentions: db.mentions
+          .filter((m) => m.responseId === r.id)
+          .map((m) => ({ feature: { id: m.featureId, name: db.features.find((f) => f.id === m.featureId)!.name }, kind: m.kind })),
+      }));
+    return { items: limit ? all.slice(0, limit) : all, total: all.length };
   },
 
   async listActivity(projectId, { limit = 10 } = {}) {
