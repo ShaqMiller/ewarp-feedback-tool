@@ -7,6 +7,7 @@ import type {
   ActivityEvent,
   Coverage,
   FeatureListItem,
+  FeatureView,
   Group,
   Id,
   ProjectFilters,
@@ -202,16 +203,30 @@ export const demoApi: FeedbackApi = {
     return result;
   },
 
-  async listFeatures(projectId, { sort = "mentions", limit, ...filters } = {}) {
+  async listFeatures(projectId, { view = "all", q, sort = "mentions", limit, ...filters } = {}) {
     await sleep();
     projectOr404(projectId);
-    const all = featureItems(projectId, filters).sort((a, b) =>
-      sort === "name"
-        ? a.name.localeCompare(b.name)
-        : b.mentions - a.mentions || a.createdAt.localeCompare(b.createdAt),
-    );
-    const items = (limit ? all.slice(0, limit) : all).map((f) => omit(f, "createdAt"));
-    return { items, total: all.length };
+    const term = q?.trim().toLowerCase();
+    const searched = featureItems(projectId, filters).filter((f) => !term || f.name.toLowerCase().includes(term));
+
+    const inView: Record<FeatureView, (f: FeatureListItem) => boolean> = {
+      all: () => true,
+      requested: (f) => f.sentiment.want > 0,
+      gap: (f) => f.coverage === "none",
+      pain: (f) => f.sentiment.dislike > 0,
+    };
+    const facets = { all: 0, requested: 0, gap: 0, pain: 0 };
+    for (const f of searched) {
+      for (const v of Object.keys(facets) as FeatureView[]) if (inView[v](f)) facets[v] += 1;
+    }
+
+    const matches = searched.filter(inView[view]).sort((a, b) => {
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "newest") return b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name);
+      return b.mentions - a.mentions || a.createdAt.localeCompare(b.createdAt);
+    });
+    const items = (limit ? matches.slice(0, limit) : matches).map((f) => omit(f, "createdAt"));
+    return { items, total: matches.length, facets };
   },
 
   async getFeature(projectId, featureId) {

@@ -12,8 +12,9 @@ import type {
   CoverageBreakdown,
   CurrentUser,
   Feature,
-  FeatureListItem,
+  FeatureList,
   FeatureSort,
+  FeatureView,
   Id,
   List,
   Project,
@@ -26,6 +27,13 @@ import type {
   VendorSort,
 } from "./types";
 
+export type FeatureQuery = ProjectFilters & {
+  view?: FeatureView;
+  q?: string; // case-insensitive name search
+  sort?: FeatureSort;
+  limit?: number;
+};
+
 export type FeedbackApi = {
   getMe(): Promise<CurrentUser>;
   listProjects(): Promise<List<ProjectListItem>>;
@@ -33,10 +41,7 @@ export type FeedbackApi = {
   getSummary(projectId: Id, filters?: ProjectFilters): Promise<ProjectSummary>;
   getResponsesByWeek(projectId: Id, query?: ProjectFilters & { weeks?: number }): Promise<ResponsesByWeek>;
   getCoverage(projectId: Id): Promise<CoverageBreakdown>;
-  listFeatures(
-    projectId: Id,
-    query?: ProjectFilters & { sort?: FeatureSort; limit?: number },
-  ): Promise<List<FeatureListItem>>;
+  listFeatures(projectId: Id, query?: FeatureQuery): Promise<FeatureList>;
   getFeature(projectId: Id, featureId: Id): Promise<Feature>;
   listVendors(
     projectId: Id,

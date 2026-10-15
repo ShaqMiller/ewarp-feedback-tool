@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { Card, CardLink } from "@/components/ui/Card";
+import { GapDot, SentimentBar } from "@/components/ui/feedback";
 import { EmptyState, Skeleton } from "@/components/ui/primitives";
 
 const TITLE = "Most discussed features";
@@ -10,7 +11,7 @@ const LIMIT = 5;
 export async function TopFeaturesCard({ projectId }: { projectId: string }) {
   const { items } = await api.listFeatures(projectId, { sort: "mentions", limit: LIMIT });
   const features = items.filter((f) => f.mentions > 0);
-  const max = Math.max(1, ...features.map((f) => f.mentions));
+  const max = Math.max(...features.map((f) => f.mentions));
   const base = `/projects/${projectId}/features`;
 
   return (
@@ -27,22 +28,9 @@ export async function TopFeaturesCard({ projectId }: { projectId: string }) {
               >
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate">{f.name}</span>
-                  {f.coverage === "none" && (
-                    <>
-                      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-gap" />
-                      <span className="sr-only">(no vendor offers this)</span>
-                    </>
-                  )}
+                  {f.coverage === "none" && <GapDot />}
                 </span>
-                <span
-                  className="flex h-2 gap-0.5"
-                  role="img"
-                  aria-label={`${f.sentiment.like} likes, ${f.sentiment.dislike} dislikes, ${f.sentiment.want} wants`}
-                >
-                  {f.sentiment.like > 0 && <span className="rounded-[3px] bg-like" style={{ width: `${(f.sentiment.like / max) * 100}%` }} />}
-                  {f.sentiment.dislike > 0 && <span className="rounded-[3px] bg-dislike" style={{ width: `${(f.sentiment.dislike / max) * 100}%` }} />}
-                  {f.sentiment.want > 0 && <span className="rounded-[3px] bg-want" style={{ width: `${(f.sentiment.want / max) * 100}%` }} />}
-                </span>
+                <SentimentBar counts={f.sentiment} max={max} />
                 <span className="text-right font-semibold tabular-nums">{f.mentions}</span>
               </Link>
             </li>

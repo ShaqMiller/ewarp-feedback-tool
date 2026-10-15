@@ -74,6 +74,13 @@ export const FolderIcon = icon(
 export const ChevronDownIcon = icon(<path d="M7 10l5 5 5-5" />);
 export const ChevronRightIcon = icon(<path d="M10 7l5 5-5 5" />);
 export const CheckIcon = icon(<path d="M5 12.5l4.5 4.5L19 7.5" />);
+export const SearchIcon = icon(
+  <>
+    <circle cx="11" cy="11" r="6" />
+    <path d="M20 20l-4.5-4.5" />
+  </>,
+);
+export const XIcon = icon(<path d="M7 7l10 10M17 7L7 17" />);
 export const MoreIcon = icon(
   <>
     <circle cx="6" cy="12" r="1.2" />

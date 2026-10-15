@@ -98,7 +98,16 @@ export type FeatureListItem = {
   sentiment: SentimentCounts;
 };
 
-export type FeatureSort = "mentions" | "name";
+export type FeatureSort = "mentions" | "newest" | "name";
+
+// Tabs on the Features page.
+//   requested = at least one want, gap = no vendor offers it, pain = at least one dislike
+export type FeatureView = "all" | "requested" | "gap" | "pain";
+
+// GET /projects/:projectId/features
+export type FeatureList = List<FeatureListItem> & {
+  facets: Record<FeatureView, number>; // matches per view, after `q` and filters but before `view`
+};
 
 // GET /projects/:projectId/features/:featureId
 export type Feature = FeatureListItem & {

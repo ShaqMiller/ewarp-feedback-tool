@@ -110,11 +110,20 @@ Used by: Dashboard → "Feature coverage".
 { "all": 4, "some": 8, "none": 5, "total": 17 }
 ```
 
-### `GET /projects/:projectId/features?sort=mentions&limit=5`
-Used by: Dashboard → "Most discussed features" (`sort=mentions&limit=5`). The Features page will use the same endpoint.
-- `sort` is `mentions` (default; ties go to the older feature first) or `name`.
-- `limit` is optional.
-- Filters: yes (they change `mentions` and `sentiment`).
+### `GET /projects/:projectId/features`
+Used by:
+- Dashboard → "Most discussed features" (`sort=mentions&limit=5`)
+- The Features page (`view`, `q` and `sort` come from its tabs, search box and sort menu)
+
+| Param | Values |
+|---|---|
+| `view` | `all` (default); `requested` = at least one want; `gap` = no vendor offers it; `pain` = at least one dislike |
+| `q` | Case-insensitive search on the feature name |
+| `sort` | `mentions` (default; ties go to the older feature first), `newest` (by `createdAt`), or `name` |
+| `limit` | Optional |
+| Filters | Yes. They change `mentions`, `sentiment`, and therefore which features count as requested or pain points. |
+
+`total` counts matches in the requested `view`. `facets` gives the count for **every** view, after `q` and filters are applied. They become the numbers on the Features page tabs, so the page needs only one request.
 ```json
 {
   "items": [
@@ -127,7 +136,8 @@ Used by: Dashboard → "Most discussed features" (`sort=mentions&limit=5`). The 
       "sentiment": { "like": 2, "dislike": 0, "want": 0 }
     }
   ],
-  "total": 17
+  "total": 17,
+  "facets": { "all": 17, "requested": 8, "gap": 5, "pain": 3 }
 }
 ```
 
@@ -135,7 +145,12 @@ Used by: Dashboard → "Most discussed features" (`sort=mentions&limit=5`). The 
 Used by: the feature page `/projects/:projectId/features/:featureId`. Same shape as a list item, plus `createdAt`. Returns 404 if the feature isn't in the project.
 
 ### `GET /projects/:projectId/vendors?sort=fit`
-Used by: Dashboard → "Vendor fit". The Vendors page will use the same endpoint.
+Used by:
+- Dashboard → "Vendor fit"
+- The Features page (`sort=name`), to label the per-vendor coverage dots
+- The Vendors page, when it's built
+
+Params:
 - `sort` is `fit` (default: `requestsMet` descending, then `responseCount` descending, then name) or `name`.
 - `limit` is optional.
 - Filters: yes.
