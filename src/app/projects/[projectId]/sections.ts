@@ -3,8 +3,6 @@ import { api, orNotFound } from "@/lib/api";
 // Copy for sections whose pages are not built yet.
 export const SECTION_COPY = {
   insights: { title: "Insights", description: "Findings AI pulls from the responses, ranked by how many people they affect." },
-  responses: { title: "Responses", description: "Every survey response, with the features AI linked to it." },
-  surveys: { title: "Surveys", description: "The surveys collecting feedback for this project and their response counts." },
   settings: { title: "Settings", description: "Project name, vendors, survey connections and who has access." },
 } as const;
 

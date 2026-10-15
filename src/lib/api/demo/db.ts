@@ -5,7 +5,14 @@
 import type { Group, Id, Sentiment } from "../types";
 
 export type ProjectRow = { id: Id; name: string; description: string; createdAt: string };
-export type SurveyRow = { id: Id; projectId: Id; name: string; createdAt: string };
+export type SurveyRow = {
+  id: Id;
+  projectId: Id;
+  name: string;
+  source: "google_forms";
+  status: "collecting" | "closed";
+  createdAt: string;
+};
 export type VendorRow = { id: Id; projectId: Id; name: string };
 export type FeatureRow = { id: Id; projectId: Id; name: string; createdAt: string };
 export type OfferingRow = { featureId: Id; vendorId: Id }; // vendor offers feature
@@ -49,9 +56,9 @@ export const projects: ProjectRow[] = [
 ];
 
 export const surveys: SurveyRow[] = [
-  { id: "srv_1", projectId: "prj_1", name: "Platform feedback (Google Form)", createdAt: daysAgo(25) },
-  { id: "srv_2", projectId: "prj_2", name: "Field tools feedback (Google Form)", createdAt: daysAgo(3) },
-  { id: "srv_3", projectId: "prj_3", name: "Training records feedback (Google Form)", createdAt: daysAgo(12) },
+  { id: "srv_1", projectId: "prj_1", name: "Platform feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(25) },
+  { id: "srv_2", projectId: "prj_2", name: "Field tools feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(3) },
+  { id: "srv_3", projectId: "prj_3", name: "Training records feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(12) },
 ];
 
 export const vendors: VendorRow[] = [

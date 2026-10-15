@@ -4,8 +4,8 @@ import { plural } from "@/lib/format";
 import { AsyncSlot } from "@/components/ui/AsyncSlot";
 import { TopBar } from "@/components/shell/TopBar";
 import { FeatureTable, FeatureTableSkeleton } from "@/components/features/FeatureTable";
-import { FeatureToolbar } from "@/components/features/FeatureToolbar";
-import { parseFeatureQuery } from "@/components/features/query";
+import { FEATURE_SORTS, parseFeatureQuery } from "@/components/features/query";
+import { ListToolbar } from "@/components/ui/ListToolbar";
 
 export const metadata: Metadata = { title: "Features" };
 
@@ -27,7 +27,10 @@ export default async function FeaturesPage({ params, searchParams }: PageProps<"
               : "Features appear once AI reads the first survey responses"}
           </p>
         </div>
-        <FeatureToolbar query={query} />
+        <ListToolbar
+          search={{ param: "q", value: query.q, placeholder: "Search features", label: "Search features" }}
+          selects={[{ param: "sort", label: "Sort by", value: query.sort, defaultValue: "mentions", options: FEATURE_SORTS }]}
+        />
         <AsyncSlot title="Features" fallback={<FeatureTableSkeleton projectId={projectId} query={query} />}>
           <FeatureTable projectId={projectId} query={query} />
         </AsyncSlot>

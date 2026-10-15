@@ -11,6 +11,8 @@ import type {
   Group,
   Id,
   ProjectFilters,
+  ResponseStatus,
+  ResponseWithMentions,
   SentimentCounts,
   SurveyResponse,
   VendorListItem,
@@ -68,6 +70,15 @@ function toSurveyResponse(r: db.ResponseRow): SurveyResponse {
     dislikes: r.dislikes,
     wants: r.wants,
     analyzed: r.analyzedAt !== null,
+  };
+}
+
+function withMentions(r: db.ResponseRow): ResponseWithMentions {
+  return {
+    ...toSurveyResponse(r),
+    mentions: db.mentions
+      .filter((m) => m.responseId === r.id)
+      .map((m) => ({ feature: { id: m.featureId, name: db.features.find((f) => f.id === m.featureId)!.name }, kind: m.kind })),
   };
 }
 
@@ -423,13 +434,76 @@ export const demoApi: FeedbackApi = {
     const all = responsesFor(projectId, filters)
       .filter((r) => r.vendorId === vendorId)
       .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
-      .map((r) => ({
-        ...toSurveyResponse(r),
-        mentions: db.mentions
-          .filter((m) => m.responseId === r.id)
-          .map((m) => ({ feature: { id: m.featureId, name: db.features.find((f) => f.id === m.featureId)!.name }, kind: m.kind })),
-      }));
+      .map(withMentions);
     return { items: limit ? all.slice(0, limit) : all, total: all.length };
+  },
+
+  async listResponses(projectId, { vendorId, surveyId, status, q, sort = "newest", limit, offset = 0, group, ...filters } = {}) {
+    await sleep();
+    projectOr404(projectId);
+    const term = q?.trim().toLowerCase();
+    // Everything except group and status, so the chips can count each option.
+    const base = responsesFor(projectId, filters).filter(
+      (r) =>
+        (!vendorId || r.vendorId === vendorId) &&
+        (!surveyId || r.surveyId === surveyId) &&
+        (!term || [r.likes, r.dislikes, r.wants].some((t) => t.toLowerCase().includes(term))),
+    );
+    const statusOf = (r: db.ResponseRow): ResponseStatus => (r.analyzedAt ? "analyzed" : "pending");
+    const facets = {
+      group: { pm: 0, sponsor: 0, other: 0 },
+      status: { analyzed: 0, pending: 0 },
+    };
+    for (const r of base) {
+      if (!status || statusOf(r) === status) facets.group[r.group] += 1;
+      if (!group || r.group === group) facets.status[statusOf(r)] += 1;
+    }
+
+    const matches = base
+      .filter((r) => (!group || r.group === group) && (!status || statusOf(r) === status))
+      .sort((a, b) => (sort === "oldest" ? a.submittedAt.localeCompare(b.submittedAt) : b.submittedAt.localeCompare(a.submittedAt)));
+    const page = matches.slice(offset, limit ? offset + limit : undefined);
+    return { items: page.map(withMentions), total: matches.length, facets };
+  },
+
+  async getResponse(projectId, responseId) {
+    await sleep();
+    projectOr404(projectId);
+    const r = db.responses.find((r) => r.id === responseId && r.projectId === projectId);
+    if (!r) throw new ApiError(404, `Response ${responseId} not found in project ${projectId}`);
+    const survey = db.surveys.find((s) => s.id === r.surveyId)!;
+    const vendorIds = vendorIdsOf(projectId);
+    const { mentions, ...rest } = withMentions(r);
+    return {
+      ...rest,
+      survey: { id: survey.id, name: survey.name },
+      mentions: mentions.map((m) => ({ ...m, coverage: coverageOf(m.feature.id, vendorIds) })),
+    };
+  },
+
+  async listSurveys(projectId) {
+    await sleep();
+    projectOr404(projectId);
+    const items = db.surveys
+      .filter((s) => s.projectId === projectId)
+      .map((s) => {
+        const rs = db.responses.filter((r) => r.surveyId === s.id);
+        const groups = emptyGroups();
+        for (const r of rs) groups[r.group] += 1;
+        return {
+          id: s.id,
+          name: s.name,
+          source: s.source,
+          status: s.status,
+          createdAt: s.createdAt,
+          responseCount: rs.length,
+          analyzedCount: rs.filter((r) => r.analyzedAt).length,
+          vendorCount: new Set(rs.map((r) => r.vendorId)).size,
+          lastResponseAt: rs.map((r) => r.submittedAt).sort().at(-1) ?? null,
+          groups,
+        };
+      });
+    return { items, total: items.length };
   },
 
   async getGraph(projectId, filters) {

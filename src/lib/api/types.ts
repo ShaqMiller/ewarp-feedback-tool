@@ -195,7 +195,36 @@ export type VendorFeature = {
 export type ResponseMention = { feature: { id: Id; name: string }; kind: Sentiment };
 
 // GET /projects/:projectId/vendors/:vendorId/responses
-export type VendorResponse = SurveyResponse & { mentions: ResponseMention[] };
+export type ResponseWithMentions = SurveyResponse & { mentions: ResponseMention[] };
+
+export type ResponseStatus = "analyzed" | "pending"; // pending = AI hasn't read it yet
+export type ResponseSort = "newest" | "oldest";
+
+// GET /projects/:projectId/responses
+export type ResponseList = List<ResponseWithMentions> & {
+  // Counts for the filter chips, after every filter except the one being counted.
+  facets: { group: Record<Group, number>; status: Record<ResponseStatus, number> };
+};
+
+// GET /projects/:projectId/responses/:responseId
+export type ResponseDetail = Omit<ResponseWithMentions, "mentions"> & {
+  survey: { id: Id; name: string };
+  mentions: (ResponseMention & { coverage: Coverage })[];
+};
+
+// GET /projects/:projectId/surveys
+export type Survey = {
+  id: Id;
+  name: string;
+  source: "google_forms";
+  status: "collecting" | "closed";
+  createdAt: string;
+  responseCount: number;
+  analyzedCount: number; // responses AI has read
+  vendorCount: number; // vendors the responses are about
+  lastResponseAt: string | null;
+  groups: Record<Group, number>;
+};
 
 // GET /projects/:projectId/graph
 // Everything the relationship map draws, in one request: it's the one view that needs every node at once.

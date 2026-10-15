@@ -22,23 +22,36 @@ const MENTION_DOT: Record<Sentiment, string> = { like: "bg-like", dislike: "bg-d
 //   highlight: answers that mention whatever the page is about (e.g. the feature being viewed)
 //   mentions:  features AI linked to the response, listed under the answers
 //   showVendor: false on a vendor's own page, where the vendor is already known
+//   linked:    false on the response's own page; otherwise the header links to it
 export function ResponseCard({
   response,
   projectId,
   highlight = [],
   mentions,
   showVendor = true,
+  linked = true,
 }: {
   response: SurveyResponse;
   projectId: string;
   highlight?: Sentiment[];
   mentions?: ResponseMention[];
   showVendor?: boolean;
+  linked?: boolean;
 }) {
   return (
     <article className="rounded-[10px] border border-line bg-surface p-4">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
-        <span className="font-semibold text-ink">{GROUP_LABELS[response.group]}</span>
+        {linked ? (
+          <Link
+            href={`/projects/${projectId}/responses/${response.id}`}
+            className="rounded font-semibold text-ink hover:underline"
+          >
+            {GROUP_LABELS[response.group]}
+            <span className="sr-only"> response, open details</span>
+          </Link>
+        ) : (
+          <span className="font-semibold text-ink">{GROUP_LABELS[response.group]}</span>
+        )}
         <span aria-hidden="true">·</span>
         {showVendor && (
           <>

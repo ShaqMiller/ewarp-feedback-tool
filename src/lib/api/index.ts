@@ -32,7 +32,12 @@ import type {
   VendorFeature,
   VendorListItem,
   VendorRequest,
-  VendorResponse,
+  ResponseDetail,
+  ResponseList,
+  ResponseSort,
+  ResponseStatus,
+  ResponseWithMentions,
+  Survey,
   VendorSort,
 } from "./types";
 
@@ -41,6 +46,16 @@ export type FeatureQuery = ProjectFilters & {
   q?: string; // case-insensitive name search
   sort?: FeatureSort;
   limit?: number;
+};
+
+export type ResponseQuery = ProjectFilters & {
+  vendorId?: Id;
+  surveyId?: Id;
+  status?: ResponseStatus;
+  q?: string; // case-insensitive search across the three answers
+  sort?: ResponseSort;
+  limit?: number;
+  offset?: number;
 };
 
 export type FeedbackApi = {
@@ -72,7 +87,10 @@ export type FeedbackApi = {
     projectId: Id,
     vendorId: Id,
     query?: ProjectFilters & { limit?: number },
-  ): Promise<List<VendorResponse>>;
+  ): Promise<List<ResponseWithMentions>>;
+  listResponses(projectId: Id, query?: ResponseQuery): Promise<ResponseList>;
+  getResponse(projectId: Id, responseId: Id): Promise<ResponseDetail>;
+  listSurveys(projectId: Id): Promise<List<Survey>>;
   getGraph(projectId: Id, filters?: ProjectFilters): Promise<ProjectGraph>;
   listActivity(projectId: Id, query?: { limit?: number }): Promise<List<ActivityEvent>>;
 };
@@ -102,6 +120,9 @@ export const api: FeedbackApi = {
   listVendorRequests: cache(source.listVendorRequests),
   listVendorFeatures: cache(source.listVendorFeatures),
   listVendorResponses: cache(source.listVendorResponses),
+  listResponses: cache(source.listResponses),
+  getResponse: cache(source.getResponse),
+  listSurveys: cache(source.listSurveys),
   getGraph: cache(source.getGraph),
   listActivity: cache(source.listActivity),
 };

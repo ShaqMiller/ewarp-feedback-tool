@@ -307,6 +307,66 @@ Params:
 }
 ```
 
+### `GET /projects/:projectId/responses`
+Used by: the Responses page, where every param comes from its toolbar, chips and pagination, kept in the page URL.
+
+| Param | Values |
+|---|---|
+| `group` | `pm`, `sponsor` or `other` (the group chips) |
+| `vendorId` | One vendor (the Vendor dropdown) |
+| `surveyId` | One survey (from a survey card's "View responses" link) |
+| `status` | `analyzed` (read by AI) or `pending` (waiting for AI) |
+| `q` | Case-insensitive search across the three answers |
+| `sort` | `newest` (default) or `oldest` |
+| `limit`, `offset` | Paging. The UI asks for 10 at a time (`offset = (page - 1) * 10`). |
+| `from`, `to` | Date filters, as elsewhere |
+
+Each item is the response shape with `mentions` (same as the vendor responses endpoint). `total` counts every match, ignoring `limit` and `offset`, so the UI can show "11–20 of 34". `facets` gives the counts for the chips: each one is calculated with all the other filters applied, but not its own. For example, group counts ignore `group` but respect `status`.
+```json
+{
+  "items": [ { "id": "rsp_8", "…": "…", "mentions": [{ "feature": { "id": "ftr_13", "name": "Bulk edit" }, "kind": "want" }] } ],
+  "total": 8,
+  "facets": {
+    "group": { "pm": 4, "sponsor": 2, "other": 2 },
+    "status": { "analyzed": 8, "pending": 0 }
+  }
+}
+```
+
+### `GET /projects/:projectId/responses/:responseId`
+Used by: the response page `/projects/:projectId/responses/:responseId`. It's opened from any response card's group name, or from the map's "Open response" button.
+
+The shape is the same as a list item, plus:
+- `survey: { id, name }`
+- each mention's `coverage`, so the page can mark gaps
+
+Returns 404 if the response isn't in the project.
+
+### `GET /projects/:projectId/surveys`
+Used by: the Surveys page (one card per survey) and the Responses page (the survey filter's label).
+```json
+{
+  "items": [
+    {
+      "id": "srv_1",
+      "name": "Platform feedback",
+      "source": "google_forms",
+      "status": "collecting",
+      "createdAt": "2026-09-20T12:00:00.000Z",
+      "responseCount": 8,
+      "analyzedCount": 8,
+      "vendorCount": 3,
+      "lastResponseAt": "2026-10-14T12:00:00.000Z",
+      "groups": { "pm": 4, "sponsor": 2, "other": 2 }
+    }
+  ],
+  "total": 1
+}
+```
+- `source` is `google_forms` for now. Add values as more survey tools are connected.
+- `status` is `collecting` or `closed`.
+- `vendorCount` is how many distinct vendors the survey's responses are about.
+
 ### `GET /projects/:projectId/graph`
 Used by: the Relationship map, where `group` comes from its chips.
 
@@ -358,6 +418,5 @@ Event types:
 
 These will follow the same conventions when their pages are built:
 
-- `GET /projects/:projectId/responses`, with filters, pagination and `vendorId` / `featureId` filters
-- `GET /projects/:projectId/responses/:responseId`
-- `GET /projects/:projectId/surveys` and `GET /projects/:projectId/surveys/:surveyId`
+- `GET /projects/:projectId/insights`: ranked AI findings for the Insights section
+- `GET /projects/:projectId/surveys/:surveyId`: if surveys get their own detail page

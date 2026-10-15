@@ -250,7 +250,7 @@ export function MapDrawer({ graph, selection, projectId, onSelect }: Props) {
           </div>
         )}
       </Section>
-      {openLink(`/projects/${projectId}/vendors/${r.vendor.id}/responses`, `See all ${r.vendor.name} responses`)}
+      {openLink(`/projects/${projectId}/responses/${r.id}`, "Open response")}
     </div>
   );
 }
