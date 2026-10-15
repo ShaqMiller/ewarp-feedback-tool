@@ -21,6 +21,7 @@ function createHttpApi(baseUrl: string): FeedbackApi {
   }
 
   const p = (projectId: string) => `/projects/${encodeURIComponent(projectId)}`;
+  const f = (projectId: string, featureId: string) => `${p(projectId)}/features/${encodeURIComponent(featureId)}`;
 
   return {
     getMe: () => get("/me"),
@@ -30,7 +31,11 @@ function createHttpApi(baseUrl: string): FeedbackApi {
     getResponsesByWeek: (projectId, query) => get(`${p(projectId)}/analytics/responses-by-week`, query),
     getCoverage: (projectId) => get(`${p(projectId)}/analytics/coverage`),
     listFeatures: (projectId, query) => get(`${p(projectId)}/features`, query),
-    getFeature: (projectId, featureId) => get(`${p(projectId)}/features/${encodeURIComponent(featureId)}`),
+    getFeature: (projectId, featureId) => get(f(projectId, featureId)),
+    getFeatureSummary: (projectId, featureId) => get(`${f(projectId, featureId)}/summary`),
+    listFeatureResponses: (projectId, featureId, query) => get(`${f(projectId, featureId)}/responses`, query),
+    listFeatureVendors: (projectId, featureId) => get(`${f(projectId, featureId)}/vendors`),
+    listRelatedFeatures: (projectId, featureId, query) => get(`${f(projectId, featureId)}/related`, query),
     listVendors: (projectId, query) => get(`${p(projectId)}/vendors`, query),
     getVendor: (projectId, vendorId) => get(`${p(projectId)}/vendors/${encodeURIComponent(vendorId)}`),
     listActivity: (projectId, query) => get(`${p(projectId)}/activity`, query),

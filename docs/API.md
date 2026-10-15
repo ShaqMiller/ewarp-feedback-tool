@@ -142,7 +142,70 @@ Used by:
 ```
 
 ### `GET /projects/:projectId/features/:featureId`
-Used by: the feature page `/projects/:projectId/features/:featureId`. Same shape as a list item, plus `createdAt`. Returns 404 if the feature isn't in the project.
+Used by: the feature page header (name, coverage, feedback pill) and the "What people said" counts. Same shape as a list item, plus `createdAt`. Returns 404 if the feature isn't in the project, and so do all of the feature sub-routes below.
+
+### `GET /projects/:projectId/features/:featureId/summary`
+Used by: Feature page → "Summary". Fields:
+- `text` is the AI-written summary, or `null` if there isn't one yet. The UI shows a "not summarized yet" note in that case.
+- `basedOn` is the number of responses the summary was written from.
+```json
+{
+  "text": "Every vendor offers notifications, so the issue is control, not availability. …",
+  "basedOn": 2,
+  "generatedAt": "2026-10-07T12:06:00.000Z"
+}
+```
+
+### `GET /projects/:projectId/features/:featureId/responses?kind=dislike`
+Used by:
+- Feature page → "What people said" quotes and the connections diagram
+- The Responses tab, where `kind` comes from the All / Likes / Dislikes / Wants chips
+- The Responses tab count
+
+Responses come newest first. Each item is a full survey response plus `kinds`: how this response mentioned the feature, usually one kind. The UI quotes the answer field that matches each kind (`like` → `likes`, `dislike` → `dislikes`, `want` → `wants`). The future Responses section can reuse the same response shape.
+
+Params:
+- `kind` (`like`, `dislike` or `want`) and `limit` are optional.
+- Filters: yes.
+```json
+{
+  "items": [
+    {
+      "id": "rsp_2",
+      "surveyId": "srv_1",
+      "group": "pm",
+      "vendor": { "id": "vnd_2", "name": "Vendor 2" },
+      "submittedAt": "2026-09-26T12:00:00.000Z",
+      "likes": "Search finds old documents quickly.",
+      "dislikes": "Notifications are noisy.",
+      "wants": "Shared comments on documents.",
+      "analyzed": true,
+      "kinds": ["dislike"]
+    }
+  ],
+  "total": 1
+}
+```
+
+### `GET /projects/:projectId/features/:featureId/vendors`
+Used by: Feature page → "Vendor coverage" and the connections diagram. Returns every vendor in the project, offering vendors first. `sentiment` counts only feedback about this feature from **that vendor's own users**.
+```json
+{
+  "items": [
+    { "vendor": { "id": "vnd_2", "name": "Vendor 2" }, "offers": true, "sentiment": { "like": 0, "dislike": 1, "want": 0 } }
+  ],
+  "total": 3
+}
+```
+
+### `GET /projects/:projectId/features/:featureId/related?limit=8`
+Used by: Feature page → "Mentioned alongside". Returns other features mentioned in the same responses. `sharedResponses` is how many responses mention both, and items are sorted by it, highest first.
+```json
+{
+  "items": [{ "id": "ftr_4", "name": "Search", "coverage": "all", "sharedResponses": 1 }],
+  "total": 4
+}
+```
 
 ### `GET /projects/:projectId/vendors?sort=fit`
 Used by:
@@ -192,5 +255,4 @@ These will follow the same conventions when their pages are built:
 - `GET /projects/:projectId/responses`, with filters, pagination and `vendorId` / `featureId` filters
 - `GET /projects/:projectId/responses/:responseId`
 - `GET /projects/:projectId/surveys` and `GET /projects/:projectId/surveys/:surveyId`
-- `GET /projects/:projectId/features/:featureId/responses`, the responses behind a feature
 - `GET /projects/:projectId/graph`, the nodes and edges for the relationship map

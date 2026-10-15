@@ -1,45 +1,44 @@
-import type { Metadata } from "next";
-import { api, orNotFound } from "@/lib/api";
-import type { Coverage } from "@/lib/api/types";
-import { plural } from "@/lib/format";
-import { Pill } from "@/components/ui/primitives";
-import { SectionPlaceholder } from "@/components/shell/SectionPlaceholder";
+import { AsyncSlot } from "@/components/ui/AsyncSlot";
+import {
+  ConnectionsCard,
+  ConnectionsSkeleton,
+  FeedbackCard,
+  FeedbackSkeleton,
+  RelatedFeaturesCard,
+  RelatedFeaturesSkeleton,
+  SummaryCard,
+  SummarySkeleton,
+  VendorCoverageCard,
+  VendorCoverageSkeleton,
+} from "@/components/features/detail/OverviewCards";
 
-const COVERAGE_LABEL: Record<Coverage, string> = {
-  all: "Offered by all vendors",
-  some: "Offered by some vendors",
-  none: "Gap · no vendor offers this",
-};
-
-export async function generateMetadata({ params }: PageProps<"/projects/[projectId]/features/[featureId]">): Promise<Metadata> {
-  const { projectId, featureId } = await params;
-  const feature = await api.getFeature(projectId, featureId).catch(() => null);
-  return { title: feature?.name ?? "Feature" };
-}
-
-// Uses GET /projects/:projectId and GET /projects/:projectId/features/:featureId
-export default async function FeaturePage({ params }: PageProps<"/projects/[projectId]/features/[featureId]">) {
-  const { projectId, featureId } = await params;
-  const [project, feature] = await Promise.all([
-    orNotFound(api.getProject(projectId)),
-    orNotFound(api.getFeature(projectId, featureId)),
-  ]);
+// Feature overview. Each card loads its own endpoint and streams in independently.
+export default async function FeatureOverviewPage({ params }: PageProps<"/projects/[projectId]/features/[featureId]">) {
+  const ids = await params;
 
   return (
-    <SectionPlaceholder
-      crumbs={[
-        { label: project.name, href: `/projects/${project.id}` },
-        { label: "Features", href: `/projects/${project.id}/features` },
-        { label: feature.name },
-      ]}
-      title={feature.name}
-      badges={
-        <>
-          <Pill tone={feature.coverage === "none" ? "gap" : "neutral"}>{COVERAGE_LABEL[feature.coverage]}</Pill>
-          <Pill>{plural(feature.mentions, "mention")}</Pill>
-        </>
-      }
-      description="The full feature page (summary, responses, vendor coverage and connections) is the next thing we build."
-    />
+    <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
+      <div className="grid gap-4">
+        <AsyncSlot title="Summary" fallback={<SummarySkeleton />}>
+          <SummaryCard {...ids} />
+        </AsyncSlot>
+        <AsyncSlot title="What people said" fallback={<FeedbackSkeleton />}>
+          <FeedbackCard {...ids} />
+        </AsyncSlot>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+        <AsyncSlot title="Vendor coverage" fallback={<VendorCoverageSkeleton />}>
+          <VendorCoverageCard {...ids} />
+        </AsyncSlot>
+        <AsyncSlot title="Connections" fallback={<ConnectionsSkeleton />}>
+          <ConnectionsCard {...ids} />
+        </AsyncSlot>
+        <div className="md:col-span-2 lg:col-span-1">
+          <AsyncSlot title="Mentioned alongside" fallback={<RelatedFeaturesSkeleton />}>
+            <RelatedFeaturesCard {...ids} />
+          </AsyncSlot>
+        </div>
+      </div>
+    </div>
   );
 }

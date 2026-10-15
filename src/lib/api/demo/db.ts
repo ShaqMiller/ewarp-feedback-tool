@@ -139,6 +139,29 @@ for (const [projectId, { surveyId, rows }] of Object.entries(responseSeed)) {
   }
 }
 
+// AI-written feature summaries. Features missing here have no summary yet.
+export const featureSummaries: Record<Id, string> = {
+  ftr_1: "The dashboard is the most-liked feature in the project. Two Vendor 1 users praise how readable it is at a glance, and every vendor offers one, so it is table stakes rather than a differentiator.",
+  ftr_2: "A program manager wants to export reports to PDF. No vendor offers this today, which makes it a gap to raise directly with vendors.",
+  ftr_3: "The sponsor's team likes Vendor 1's permission controls. All three vendors offer them, so the comparison is about how granular the controls are.",
+  ftr_4: "A Vendor 2 user values how quickly search finds older documents. Every vendor has search; speed on large archives is what users notice.",
+  ftr_5: "Every vendor offers notifications, so the issue is control, not availability. A Vendor 2 user finds them noisy, and a Vendor 3 user wants alerts only for items they own. Filtering and ownership rules would address both.",
+  ftr_6: "The sponsor's team wants single sign-on with existing accounts. Only Vendor 2 offers it, which matters for a security-minded rollout.",
+  ftr_7: "A sponsor finds Vendor 1's mobile view hard to use. It is the only vendor offering a mobile view, so quality matters more than availability here.",
+  ftr_8: "Templates save a Vendor 2 user a lot of time. Only Vendor 2 offers them, making this a point in its favor.",
+  ftr_9: "A Vendor 2 user wants version history with a compare view. Vendor 3 already offers version history.",
+  ftr_10: "A Vendor 3 user likes that the product works well offline. No other vendor offers an offline mode.",
+  ftr_11: "Syncing large files is slow for a Vendor 3 user. File sync is unique to Vendor 3, so this weakens one of its differentiators.",
+  ftr_12: "The sponsor's team wants a clear audit log of who changed what. No vendor offers this, and it is likely a compliance requirement.",
+  ftr_13: "A program manager wants to bulk edit many items at once. No vendor offers it, so it is a candidate roadmap request.",
+  ftr_14: "A program manager likes Vendor 3's simple timeline view. Only Vendor 3 offers one.",
+  ftr_15: "A program manager can't link tasks across projects and wants to. No vendor supports cross-project links.",
+  ftr_16: "A program manager finds report sharing easy with Vendor 1, the only vendor that offers it.",
+  ftr_17: "A program manager wants shared comments on documents. No vendor offers this today.",
+  ftr_18: "The course catalog gets mixed feedback. It is well organized for Vendor A users, but a Vendor B user finds courses slow to locate.",
+  ftr_20: "Both responses ask for reminders before certificates expire. No vendor offers this, and it is the clearest gap in the project.",
+};
+
 // A feature is created when AI first finds it in a response.
 export const features: FeatureRow[] = featureSeed.map(([id, projectId, name]) => {
   const firstSeen = mentions

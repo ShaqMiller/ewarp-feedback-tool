@@ -114,6 +114,47 @@ export type Feature = FeatureListItem & {
   createdAt: string;
 };
 
+// GET /projects/:projectId/features/:featureId/summary
+export type FeatureSummary = {
+  text: string | null; // null until AI has written one
+  basedOn: number; // responses the summary was written from
+  generatedAt: string | null;
+};
+
+// One survey response. Reused by the Responses section later.
+export type SurveyResponse = {
+  id: Id;
+  surveyId: Id;
+  group: Group;
+  vendor: { id: Id; name: string };
+  submittedAt: string;
+  likes: string;
+  dislikes: string;
+  wants: string;
+  analyzed: boolean;
+};
+
+// GET /projects/:projectId/features/:featureId/responses
+// A response that mentions the feature, and how (usually one kind, occasionally more).
+export type FeatureResponse = SurveyResponse & { kinds: Sentiment[] };
+
+// GET /projects/:projectId/features/:featureId/vendors
+// Every project vendor, whether it offers the feature, and what its own users said about it.
+export type FeatureVendor = {
+  vendor: { id: Id; name: string };
+  offers: boolean;
+  sentiment: SentimentCounts;
+};
+
+// GET /projects/:projectId/features/:featureId/related
+// Features mentioned in the same responses, most shared responses first.
+export type RelatedFeature = {
+  id: Id;
+  name: string;
+  coverage: Coverage;
+  sharedResponses: number;
+};
+
 // GET /projects/:projectId/vendors
 export type VendorListItem = {
   id: Id;

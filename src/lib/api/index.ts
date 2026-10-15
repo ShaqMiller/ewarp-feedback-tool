@@ -13,9 +13,14 @@ import type {
   CurrentUser,
   Feature,
   FeatureList,
+  FeatureResponse,
   FeatureSort,
+  FeatureSummary,
+  FeatureVendor,
   FeatureView,
   Id,
+  RelatedFeature,
+  Sentiment,
   List,
   Project,
   ProjectFilters,
@@ -43,6 +48,14 @@ export type FeedbackApi = {
   getCoverage(projectId: Id): Promise<CoverageBreakdown>;
   listFeatures(projectId: Id, query?: FeatureQuery): Promise<FeatureList>;
   getFeature(projectId: Id, featureId: Id): Promise<Feature>;
+  getFeatureSummary(projectId: Id, featureId: Id): Promise<FeatureSummary>;
+  listFeatureResponses(
+    projectId: Id,
+    featureId: Id,
+    query?: ProjectFilters & { kind?: Sentiment; limit?: number },
+  ): Promise<List<FeatureResponse>>;
+  listFeatureVendors(projectId: Id, featureId: Id): Promise<List<FeatureVendor>>;
+  listRelatedFeatures(projectId: Id, featureId: Id, query?: { limit?: number }): Promise<List<RelatedFeature>>;
   listVendors(
     projectId: Id,
     query?: ProjectFilters & { sort?: VendorSort; limit?: number },
@@ -66,6 +79,10 @@ export const api: FeedbackApi = {
   getCoverage: cache(source.getCoverage),
   listFeatures: cache(source.listFeatures),
   getFeature: cache(source.getFeature),
+  getFeatureSummary: cache(source.getFeatureSummary),
+  listFeatureResponses: cache(source.listFeatureResponses),
+  listFeatureVendors: cache(source.listFeatureVendors),
+  listRelatedFeatures: cache(source.listRelatedFeatures),
   listVendors: cache(source.listVendors),
   getVendor: cache(source.getVendor),
   listActivity: cache(source.listActivity),
