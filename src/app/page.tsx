@@ -1,5 +1,5 @@
-import { FeedbackPage } from "@/components/FeedbackPage";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <FeedbackPage />;
+  redirect("/projects");
 }

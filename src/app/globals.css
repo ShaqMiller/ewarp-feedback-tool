@@ -1,19 +1,55 @@
 @import "tailwindcss";
 
-:root {
-  --background: #0a0d12;
-  --foreground: #e6e8eb;
+/* eWARP design tokens (Direction A, light). Use these, not raw hex values, in components. */
+@theme {
+  --color-canvas: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-sidebar: #fafbfc;
+  --color-ink: #141821;
+  --color-muted: #545c6a;
+  --color-faint: #6b7380;
+  --color-line: #e4e7ec;
+  --color-chip: #f0f2f5;
+
+  --color-accent: #2b50c8;
+  --color-accent-soft: #ebeffc;
+
+  /* Feedback */
+  --color-like: #18875e;
+  --color-like-soft: #e4f3eb;
+  --color-dislike: #cf3f3f;
+  --color-dislike-soft: #fbe9e9;
+  --color-want: #7047d1;
+  --color-want-soft: #efe9fb;
+
+  /* Coverage: only gaps get a warning color */
+  --color-gap: #b45309;
+  --color-gap-soft: #fcf0e1;
+  --color-cov-all: #3b4352;
+  --color-cov-some: #a9b1bd;
+
+  /* Respondent groups: one blue ramp */
+  --color-group-pm: #2b50c8;
+  --color-group-sponsor: #7b92e3;
+  --color-group-other: #c3cdf1;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+:root {
+  color-scheme: light;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

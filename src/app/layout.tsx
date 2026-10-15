@@ -13,17 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "eWARP Feedback Map",
-  description: "Survey responses linked to the vendors they are about",
+  title: { default: "eWARP", template: "%s · eWARP" },
+  description: "Survey feedback, the features it points to, and the vendors that offer them.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="min-h-full">{children}</body>
     </html>
   );
 }
