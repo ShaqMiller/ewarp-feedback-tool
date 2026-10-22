@@ -3,31 +3,15 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { api } from "@/lib/api";
 import { formatDate, plural } from "@/lib/format";
-import { ChevronRightIcon, PlusIcon } from "@/components/ui/icons";
-import { EmptyState, Skeleton } from "@/components/ui/primitives";
-import { AppHeader } from "@/components/shell/AppHeader";
+import { ChevronRightIcon } from "@/components/ui/icons";
+import { Skeleton } from "@/components/ui/primitives";
+import { DemoBadge, Logo, UserBadge } from "@/components/shell/Sidebar";
 
 export const metadata: Metadata = { title: "Projects" };
-
-const newProjectClass =
-  "inline-flex h-[32px] items-center gap-1.5 rounded-[7px] bg-ink px-3 text-[12.5px] font-medium text-surface transition-colors hover:bg-ink/85";
 
 // Uses GET /projects
 async function ProjectList() {
   const { items } = await api.listProjects();
-  if (items.length === 0) {
-    return (
-      <section className="rounded-[10px] border border-line bg-surface">
-        <EmptyState title="No projects yet">
-          <span className="mb-3 block">Create a project with the vendors you&apos;re evaluating to start collecting feedback.</span>
-          <Link href="/projects/new" className={newProjectClass}>
-            <PlusIcon className="size-3.5" />
-            New project
-          </Link>
-        </EmptyState>
-      </section>
-    );
-  }
   return (
     <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((p) => (
@@ -54,17 +38,21 @@ async function ProjectList() {
 export default function ProjectsPage() {
   return (
     <div className="min-h-dvh">
-      <AppHeader />
+      <header className="flex h-14 items-center justify-between border-b border-line bg-surface px-4 sm:px-6">
+        <div className="flex items-center gap-3">
+          <Logo />
+          <Suspense fallback={null}>
+            <DemoBadge />
+          </Suspense>
+        </div>
+        <Suspense fallback={<Skeleton className="size-[26px] rounded-full" />}>
+          <UserBadge compact />
+        </Suspense>
+      </header>
       <main className="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-[22px] font-semibold tracking-[-0.015em]">Projects</h1>
-            <p className="text-[13px] text-muted">Each project has its own surveys, vendors and features.</p>
-          </div>
-          <Link href="/projects/new" className={newProjectClass}>
-            <PlusIcon className="size-3.5" />
-            New project
-          </Link>
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-[-0.015em]">Projects</h1>
+          <p className="text-[13px] text-muted">Each project has its own surveys, vendors and features.</p>
         </div>
         <Suspense
           fallback={

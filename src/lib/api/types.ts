@@ -41,23 +41,6 @@ export type ProjectListItem = {
   lastResponseAt: string | null;
 };
 
-// POST /projects (body): creates the project, its vendors, one Google Forms survey per vendor, and the
-// form routing, in one transaction. Each vendor's form defaults to its name.
-export type ProjectCreate = {
-  name: string;
-  description?: string;
-  vendors: { name: string; form?: string }[];
-};
-
-// POST /projects (201 response)
-export type ProjectCreated = {
-  id: Id;
-  name: string;
-  description: string;
-  createdAt: string;
-  vendors: { id: Id; name: string; form: string; surveyId: Id }[];
-};
-
 // GET /projects/:projectId
 export type Project = {
   id: Id;
@@ -182,9 +165,6 @@ export type VendorListItem = {
   featureCount: number; // features it offers
   exclusiveCount: number; // of those, features no other vendor offers
   sentiment: SentimentCounts; // feedback from its own users
-  // The Google Form name that routes submissions to this vendor (the "form" field the webhook receives).
-  // null if no form is configured, in which case no responses can reach it.
-  form: string | null;
 };
 
 export type VendorSort = "fit" | "name";
@@ -195,13 +175,11 @@ export type Vendor = VendorListItem & {
 };
 
 // POST /projects/:projectId/vendors (body)
-// Also creates the vendor's survey ("<name> feedback") and routes its Google Form to it.
-// form defaults to the vendor name and must be unused across all projects.
-export type VendorCreate = { name: string; form?: string };
+export type VendorCreate = { name: string };
 
 // PATCH /projects/:projectId/vendors/:vendorId (body). Send only what changes.
-// form changes which Google Form routes to this vendor; featureIds replaces the full list of features it offers.
-export type VendorUpdate = { name?: string; form?: string; featureIds?: Id[] };
+// featureIds replaces the full list of features the vendor offers.
+export type VendorUpdate = { name?: string; featureIds?: Id[] };
 
 // GET /projects/:projectId/vendors/:vendorId/requests
 // Every requested feature in the project, and whether this vendor offers it.

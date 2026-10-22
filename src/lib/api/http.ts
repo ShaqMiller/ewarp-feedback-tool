@@ -37,7 +37,6 @@ function createHttpApi(baseUrl: string, token?: string): FeedbackApi {
     getMe: () => get("/me"),
     listProjects: () => get("/projects"),
     getProject: (projectId) => get(p(projectId)),
-    createProject: (body) => request("POST", "/projects", { body }),
     getSummary: (projectId, filters) => get(`${p(projectId)}/summary`, filters),
     getResponsesByWeek: (projectId, query) => get(`${p(projectId)}/analytics/responses-by-week`, query),
     getCoverage: (projectId) => get(`${p(projectId)}/analytics/coverage`),

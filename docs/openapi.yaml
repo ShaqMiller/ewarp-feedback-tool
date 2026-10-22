@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: eWARP Feedback API
-  version: 1.2.0
+  version: 1.1.0
   description: |
     The contract between the eWARP front end and its backend. Every route is a read-only GET except
-    the writes: POST /projects (New project) and the vendor routes used by Settings → Vendors (POST, PATCH, DELETE).
+    the three vendor write routes used by Settings → Vendors (POST, PATCH, DELETE).
 
     - The front end calls these from the server (Next.js), never from the browser.
     - Base URL is whatever FEEDBACK_API_URL is set to, e.g. https://api.example.com/api/v1.
@@ -39,25 +39,6 @@ paths:
       description: "Used by: project switcher, All projects page."
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectList" } } } }
-        default: { $ref: "#/components/responses/Error" }
-    post:
-      operationId: createProject
-      summary: Create a project, its vendors and their Google Form routing
-      description: |
-        Used by: New project page. In one transaction, creates the project, its vendors, one Google Forms survey per
-        vendor (name "<vendor> feedback", source google_forms, status collecting) and the form → vendor/survey routing
-        the webhook uses. Already-stored raw submissions whose form matches a new configuration are imported as responses
-        (each with a response.submitted activity event). Nothing is created if any step fails.
-        Rules: project name required, max 200; description optional, max 2,000; 1–100 vendors; vendor names required and
-        unique within the request ignoring case; each vendor's form defaults to its name, must be unique within the request
-        ignoring case (400), and must not already be configured anywhere (409).
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/ProjectCreate" } } }
-      responses:
-        "201": { description: Created., content: { application/json: { schema: { $ref: "#/components/schemas/ProjectCreated" } } } }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
 
   /projects/{projectId}:
@@ -669,7 +650,7 @@ components:
 
     VendorListItem:
       type: object
-      required: [id, name, responseCount, requestsMet, requestsTotal, featureCount, exclusiveCount, sentiment, form]
+      required: [id, name, responseCount, requestsMet, requestsTotal, featureCount, exclusiveCount, sentiment]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         name: { type: string }
@@ -679,7 +660,6 @@ components:
         featureCount: { $ref: "#/components/schemas/Count" }
         exclusiveCount: { $ref: "#/components/schemas/Count", description: Offered features no other vendor offers }
         sentiment: { $ref: "#/components/schemas/SentimentCounts", description: Feedback from its own users }
-        form: { type: [string, "null"], description: "The Google Form name routed to this vendor; null if none is configured" }
     VendorList:
       type: object
       required: [items, total]
@@ -691,61 +671,16 @@ components:
           required: [featureIds]
           properties: { featureIds: { type: array, items: { $ref: "#/components/schemas/Id" } } }
 
-    FormName:
-      type: string
-      minLength: 1
-      maxLength: 200
-      description: |
-        The Google Form name the webhook receives in its "form" field. Routes submissions to one vendor and its survey.
-        Unique across the whole system, ignoring case.
-    ProjectCreate:
-      type: object
-      required: [name, vendors]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        description: { type: string, maxLength: 2000 }
-        vendors:
-          type: array
-          minItems: 1
-          maxItems: 100
-          items:
-            type: object
-            required: [name]
-            properties:
-              name: { type: string, minLength: 1, maxLength: 80 }
-              form: { $ref: "#/components/schemas/FormName", description: Defaults to the vendor name }
-    ProjectCreated:
-      type: object
-      required: [id, name, description, createdAt, vendors]
-      properties:
-        id: { $ref: "#/components/schemas/Id" }
-        name: { type: string }
-        description: { type: string }
-        createdAt: { $ref: "#/components/schemas/DateTime" }
-        vendors:
-          type: array
-          items:
-            type: object
-            required: [id, name, form, surveyId]
-            properties:
-              id: { $ref: "#/components/schemas/Id" }
-              name: { type: string }
-              form: { type: string }
-              surveyId: { $ref: "#/components/schemas/Id" }
     VendorCreate:
       type: object
       required: [name]
       properties:
         name: { type: string, minLength: 1, maxLength: 80, description: "Trimmed; must not be blank; unique in the project ignoring case" }
-        form:
-          $ref: "#/components/schemas/FormName"
-          description: "Defaults to the vendor name. Creating the vendor also creates its survey and form routing, like POST /projects."
     VendorUpdate:
       type: object
       minProperties: 1
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
-        form: { $ref: "#/components/schemas/FormName", description: "Changes which Google Form routes to this vendor (409 if taken)" }
         featureIds:
           type: array
           items: { $ref: "#/components/schemas/Id" }

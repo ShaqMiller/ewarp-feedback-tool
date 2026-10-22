@@ -25,8 +25,6 @@ import type {
   Sentiment,
   List,
   Project,
-  ProjectCreate,
-  ProjectCreated,
   ProjectFilters,
   ProjectGraph,
   ProjectListItem,
@@ -68,7 +66,6 @@ export type FeedbackApi = {
   getMe(): Promise<CurrentUser>;
   listProjects(): Promise<List<ProjectListItem>>;
   getProject(projectId: Id): Promise<Project>;
-  createProject(body: ProjectCreate): Promise<ProjectCreated>;
   getSummary(projectId: Id, filters?: ProjectFilters): Promise<ProjectSummary>;
   getResponsesByWeek(projectId: Id, query?: ProjectFilters & { weeks?: number }): Promise<ResponsesByWeek>;
   getCoverage(projectId: Id): Promise<CoverageBreakdown>;
@@ -137,7 +134,6 @@ export const api: FeedbackApi = {
   getMe: cache(forward("getMe")),
   listProjects: cache(forward("listProjects")),
   getProject: cache(forward("getProject")),
-  createProject: forward("createProject"),
   getSummary: cache(forward("getSummary")),
   getResponsesByWeek: cache(forward("getResponsesByWeek")),
   getCoverage: cache(forward("getCoverage")),

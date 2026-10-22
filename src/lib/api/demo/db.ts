@@ -16,8 +16,6 @@ export type SurveyRow = {
 export type VendorRow = { id: Id; projectId: Id; name: string };
 export type FeatureRow = { id: Id; projectId: Id; name: string; createdAt: string };
 export type OfferingRow = { featureId: Id; vendorId: Id }; // vendor offers feature
-// Routes Google Form submissions: the webhook's "form" value -> project, vendor and survey (his form_configurations).
-export type FormRow = { form: string; projectId: Id; vendorId: Id; surveyId: Id };
 export type ResponseRow = {
   id: Id;
   projectId: Id;
@@ -36,7 +34,7 @@ const now = Date.now();
 const DAY = 86_400_000;
 const daysAgo = (days: number, minutes = 0) => new Date(now - days * DAY + minutes * 60_000).toISOString();
 
-const projectSeed: ProjectRow[] = [
+export const projects: ProjectRow[] = [
   {
     id: "prj_1",
     name: "Collaboration Platform Eval",
@@ -57,7 +55,7 @@ const projectSeed: ProjectRow[] = [
   },
 ];
 
-const surveySeed: SurveyRow[] = [
+export const surveys: SurveyRow[] = [
   { id: "srv_1", projectId: "prj_1", name: "Platform feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(25) },
   { id: "srv_2", projectId: "prj_2", name: "Field tools feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(3) },
   { id: "srv_3", projectId: "prj_3", name: "Training records feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(12) },
@@ -98,20 +96,15 @@ const featureSeed: [Id, Id, string, Id[]][] = [
   ["ftr_21", "prj_3", "Compliance reports", ["vnd_7"]],
 ];
 
-// Projects, surveys, vendors, offerings and forms can be created or edited from the app. Next.js loads the
-// app pages and the /api/v1 route as separate module copies, so these tables live on globalThis to be shared
-// (until the server restarts).
-type Editable = { projects: ProjectRow[]; surveys: SurveyRow[]; vendors: VendorRow[]; offerings: OfferingRow[]; forms: FormRow[] };
-const shared = globalThis as typeof globalThis & { __ewarpDemo2?: Editable };
-shared.__ewarpDemo2 ??= {
-  projects: projectSeed,
-  surveys: surveySeed,
+// Vendors and offerings can be edited from Settings. Next.js loads the app pages and the /api/v1 route
+// as separate module copies, so these two tables live on globalThis to be shared (until the server restarts).
+const shared = globalThis as typeof globalThis & { __ewarpDemo?: { vendors: VendorRow[]; offerings: OfferingRow[] } };
+shared.__ewarpDemo ??= {
   vendors: vendorSeed,
   offerings: featureSeed.flatMap(([featureId, , , vendorIds]) => vendorIds.map((vendorId) => ({ featureId, vendorId }))),
-  // Seed vendors share their project's single survey; vendors created in the app get their own.
-  forms: vendorSeed.map((v) => ({ form: v.name, projectId: v.projectId, vendorId: v.id, surveyId: surveySeed.find((s) => s.projectId === v.projectId)!.id })),
 };
-export const { projects, surveys, vendors, offerings, forms } = shared.__ewarpDemo2;
+export const vendors = shared.__ewarpDemo.vendors;
+export const offerings = shared.__ewarpDemo.offerings;
 
 type ResponseSeed = Omit<ResponseRow, "projectId" | "surveyId" | "submittedAt" | "analyzedAt"> & {
   daysAgo: number;

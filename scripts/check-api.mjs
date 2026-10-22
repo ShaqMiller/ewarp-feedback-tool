@@ -194,14 +194,9 @@ async function checkWrites(p, featureId) {
     }
   }
 
-  // Rejected before anything is created, so this never leaves a project behind.
-  await expect("POST", "/projects", { name: "Contract check", vendors: [] }, 400, "Error");
-
   const name = `Contract check ${new Date().toISOString().slice(0, 19)}`;
   const created = await expect("POST", `${p}/vendors`, { name }, 201, "Vendor", (v) =>
-    v.name === name && v.form === name && v.featureIds.length === 0 && v.responseCount === 0
-      ? []
-      : ["new vendor should have the sent name, form defaulting to the name, no features and no responses"],
+    v.name === name && v.featureIds.length === 0 && v.responseCount === 0 ? [] : ["new vendor should have the sent name, no features and no responses"],
   );
   if (!created) {
     console.log(color(33, "\nCouldn't create the test vendor; skipped the rest of the write checks."));
@@ -210,8 +205,6 @@ async function checkWrites(p, featureId) {
   const v = `${p}/vendors/${encodeURIComponent(created.id)}`;
 
   await expect("POST", `${p}/vendors`, { name: name.toUpperCase() }, 409, "Error");
-  await expect("POST", `${p}/vendors`, { name: `${name} B`, form: name.toLowerCase() }, 409, "Error");
-  await expect("PATCH", v, { form: `${name} form` }, 200, "Vendor", (b) => (b.form === `${name} form` ? [] : ["form was not updated"]));
   await expect("POST", `${p}/vendors`, { name: "   " }, 400, "Error");
   await expect("PATCH", v, { name: `${name} (renamed)` }, 200, "Vendor", (b) =>
     b.name === `${name} (renamed)` ? [] : ["name was not updated"],

@@ -1,12 +1,12 @@
 // Reference API: serves the demo data at the exact paths in docs/openapi.yaml, so the backend team
 // can call any route (e.g. GET /api/v1/projects/prj_1/summary) and see the response the UI expects.
-// Also accepts the write routes (create project, create / edit / delete vendor). Turned off once FEEDBACK_API_URL
+// Also accepts the vendor write routes (POST / PATCH / DELETE). Turned off once FEEDBACK_API_URL
 // points the app at the real backend.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { demoApi } from "@/lib/api/demo/handlers";
 import { ApiError, ERROR_CODES } from "@/lib/api/errors";
-import type { ProjectCreate, ProjectFilters, VendorCreate, VendorUpdate } from "@/lib/api/types";
+import type { ProjectFilters, VendorCreate, VendorUpdate } from "@/lib/api/types";
 
 class BadRequest extends Error {}
 
@@ -126,7 +126,6 @@ const ROUTES: [string, Handler][] = [
 // Write routes. The body arrives as parsed JSON; the demo handlers validate it (400 / 409).
 type WriteHandler = (params: Params, body: unknown) => Promise<unknown>;
 const WRITE_ROUTES: [method: string, pattern: string, status: number, handler: WriteHandler][] = [
-  ["POST", "projects", 201, (_p, body) => demoApi.createProject(body as ProjectCreate)],
   ["POST", "projects/:projectId/vendors", 201, (p, body) => demoApi.createVendor(p.projectId, body as VendorCreate)],
   ["PATCH", "projects/:projectId/vendors/:vendorId", 200, (p, body) => demoApi.updateVendor(p.projectId, p.vendorId, body as VendorUpdate)],
   ["DELETE", "projects/:projectId/vendors/:vendorId", 204, (p) => demoApi.deleteVendor(p.projectId, p.vendorId)],
