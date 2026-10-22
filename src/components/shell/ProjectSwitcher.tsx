@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ProjectListItem } from "@/lib/api/types";
 import { cn, plural } from "@/lib/format";
-import { CheckIcon, ChevronDownIcon, FolderIcon } from "@/components/ui/icons";
+import { CheckIcon, ChevronDownIcon, FolderIcon, PlusIcon } from "@/components/ui/icons";
 import { usePopover } from "@/components/ui/usePopover";
 
 type Props = {
@@ -70,14 +70,24 @@ export function ProjectSwitcher({ current, projects, compact }: Props) {
               );
             })}
           </ul>
-          <Link
-            href="/projects"
-            onClick={close}
-            className="flex items-center gap-2 border-t border-line px-3 py-2.5 text-[13px] font-medium text-muted hover:bg-chip hover:text-ink"
-          >
-            <FolderIcon className="size-4" />
-            All projects
-          </Link>
+          <div className="border-t border-line p-1">
+            <Link
+              href="/projects/new"
+              onClick={close}
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-[13px] font-medium text-muted hover:bg-chip hover:text-ink"
+            >
+              <PlusIcon className="size-4" />
+              New project
+            </Link>
+            <Link
+              href="/projects"
+              onClick={close}
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-[13px] font-medium text-muted hover:bg-chip hover:text-ink"
+            >
+              <FolderIcon className="size-4" />
+              All projects
+            </Link>
+          </div>
         </div>
       )}
     </div>

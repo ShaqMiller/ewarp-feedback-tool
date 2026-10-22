@@ -55,11 +55,62 @@ function vendorOr404(projectId: Id, vendorId: Id) {
 
 // Write validation. The rules match docs/openapi.yaml; messages are shown to people as-is.
 const NAME_MAX = 80;
+const FORM_MAX = 200;
+const PROJECT_NAME_MAX = 200;
+const DESCRIPTION_MAX = 2000;
+const VENDORS_MAX = 100;
+
+const collapse = (s: string) => s.trim().replace(/\s+/g, " ");
+
+function validText(input: unknown, label: string, max: number, required: boolean): string | undefined {
+  if (input === undefined || input === null || (typeof input === "string" && input.trim() === "")) {
+    if (required) throw new ApiError(400, `Enter a ${label.toLowerCase()}.`);
+    return undefined;
+  }
+  if (typeof input !== "string") throw new ApiError(400, `${label} must be text.`);
+  const text = input.trim();
+  if (text.length > max) throw new ApiError(400, `${label} can be at most ${max.toLocaleString("en-US")} characters.`);
+  return text;
+}
+
+// Vendor name rules without the per-project uniqueness check (used when the project doesn't exist yet).
+function cleanVendorName(input: unknown): string {
+  if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter a name for every vendor.");
+  const name = collapse(input);
+  if (name.length > NAME_MAX) throw new ApiError(400, `Vendor names can be at most ${NAME_MAX} characters.`);
+  return name;
+}
+
+function cleanForm(input: unknown): string {
+  if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter the Google Form name.");
+  const form = collapse(input);
+  if (form.length > FORM_MAX) throw new ApiError(400, `Form names can be at most ${FORM_MAX} characters.`);
+  return form;
+}
+
+// A form can route to only one vendor in the whole system.
+function assertFormFree(form: string, exceptVendorId?: Id) {
+  const taken = db.forms.find((f) => f.form.toLowerCase() === form.toLowerCase() && f.vendorId !== exceptVendorId);
+  if (taken) throw new ApiError(409, `The form "${form}" is already connected to another vendor.`);
+}
+
+// Creates the vendor's own survey ("<name> feedback") and routes the form to it.
+function addFormRoute(projectId: Id, vendorId: Id, vendorName: string, form: string, createdAt: string) {
+  const surveyId = `srv_${crypto.randomUUID().slice(0, 8)}`;
+  db.surveys.push({ id: surveyId, projectId, name: `${vendorName} feedback`, source: "google_forms", status: "collecting", createdAt });
+  db.forms.push({ form, projectId, vendorId, surveyId });
+  return surveyId;
+}
+
+function addVendor(projectId: Id, name: string, form: string, createdAt: string) {
+  const id = `vnd_${crypto.randomUUID().slice(0, 8)}`;
+  db.vendors.push({ id, projectId, name });
+  const surveyId = addFormRoute(projectId, id, name, form, createdAt);
+  return { id, name, form, surveyId };
+}
 
 function validVendorName(projectId: Id, input: unknown, exceptId?: Id): string {
-  if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter a vendor name.");
-  const name = input.trim().replace(/\s+/g, " ");
-  if (name.length > NAME_MAX) throw new ApiError(400, `Vendor names can be at most ${NAME_MAX} characters.`);
+  const name = cleanVendorName(input);
   const taken = db.vendors.some(
     (v) => v.projectId === projectId && v.id !== exceptId && v.name.toLowerCase() === name.toLowerCase(),
   );
@@ -173,6 +224,7 @@ function vendorItems(projectId: Id, filters?: ProjectFilters): (VendorListItem &
         requestsTotal: requested.size,
         featureCount: featureIds.length,
         exclusiveCount: featureIds.filter((id) => offeredBy(id).length === 1).length,
+        form: db.forms.find((f) => f.vendorId === v.id)?.form ?? null,
         sentiment,
       };
     });
@@ -401,24 +453,59 @@ export const demoApi: FeedbackApi = {
   },
 
   // Demo writes change the in-memory tables, so they reset when the server restarts.
+  async createProject(body) {
+    await sleep();
+    // Validate everything first so nothing is half-created (the real backend uses one transaction).
+    const name = validText(body?.name, "Project name", PROJECT_NAME_MAX, true)!;
+    const description = validText(body?.description, "Description", DESCRIPTION_MAX, false) ?? "";
+    if (!Array.isArray(body?.vendors) || body.vendors.length === 0) throw new ApiError(400, "Add at least one vendor.");
+    if (body.vendors.length > VENDORS_MAX) throw new ApiError(400, `A project can start with at most ${VENDORS_MAX} vendors.`);
+    const planned = body.vendors.map((v) => {
+      const vendorName = cleanVendorName(v?.name);
+      return { name: vendorName, form: cleanForm(v?.form ?? vendorName) };
+    });
+    const repeated = (key: "name" | "form") =>
+      planned.find((p, i) => planned.findIndex((q) => q[key].toLowerCase() === p[key].toLowerCase()) !== i);
+    const dupName = repeated("name");
+    if (dupName) throw new ApiError(400, `"${dupName.name}" is listed twice. Vendor names must be different.`);
+    const dupForm = repeated("form");
+    if (dupForm) throw new ApiError(400, `The form "${dupForm.form}" is listed twice. Each vendor needs its own form.`);
+    for (const p of planned) assertFormFree(p.form);
+
+    const createdAt = new Date().toISOString();
+    const projectId = `prj_${crypto.randomUUID().slice(0, 8)}`;
+    db.projects.push({ id: projectId, name, description, createdAt });
+    const vendors = planned.map((p) => ({ ...addVendor(projectId, p.name, p.form, createdAt) }));
+    return { id: projectId, name, description, createdAt, vendors };
+  },
+
   async createVendor(projectId, body) {
     await sleep();
     projectOr404(projectId);
     const name = validVendorName(projectId, body?.name);
-    const id = `vnd_${crypto.randomUUID().slice(0, 8)}`;
-    db.vendors.push({ id, projectId, name });
+    const form = cleanForm(body?.form ?? name);
+    assertFormFree(form);
+    const { id } = addVendor(projectId, name, form, new Date().toISOString());
     return demoApi.getVendor(projectId, id);
   },
 
   async updateVendor(projectId, vendorId, body) {
     await sleep();
     const vendor = vendorOr404(projectId, vendorId);
-    if (body?.name === undefined && body?.featureIds === undefined) {
-      throw new ApiError(400, "Send a name, featureIds, or both.");
+    if (body?.name === undefined && body?.form === undefined && body?.featureIds === undefined) {
+      throw new ApiError(400, "Send at least one of name, form or featureIds.");
     }
     const name = body.name === undefined ? undefined : validVendorName(projectId, body.name, vendorId);
+    const form = body.form === undefined ? undefined : cleanForm(body.form);
+    if (form !== undefined) assertFormFree(form, vendorId);
     const featureIds = body.featureIds === undefined ? undefined : validFeatureIds(projectId, body.featureIds);
+
     if (name !== undefined) vendor.name = name;
+    if (form !== undefined) {
+      const route = db.forms.find((f) => f.vendorId === vendorId);
+      if (route) route.form = form;
+      else addFormRoute(projectId, vendorId, name ?? vendor.name, form, new Date().toISOString());
+    }
     if (featureIds !== undefined) {
       // Replace this vendor's offerings with exactly the given list.
       for (let i = db.offerings.length - 1; i >= 0; i--) if (db.offerings[i].vendorId === vendorId) db.offerings.splice(i, 1);
@@ -439,6 +526,14 @@ export const demoApi: FeedbackApi = {
     }
     db.vendors.splice(db.vendors.indexOf(vendor), 1);
     for (let i = db.offerings.length - 1; i >= 0; i--) if (db.offerings[i].vendorId === vendorId) db.offerings.splice(i, 1);
+    // Free its form, and remove its own survey if nothing else uses it.
+    for (let i = db.forms.length - 1; i >= 0; i--) {
+      const route = db.forms[i];
+      if (route.vendorId !== vendorId) continue;
+      db.forms.splice(i, 1);
+      const inUse = db.forms.some((f) => f.surveyId === route.surveyId) || db.responses.some((r) => r.surveyId === route.surveyId);
+      if (!inUse) db.surveys.splice(db.surveys.findIndex((s) => s.id === route.surveyId), 1);
+    }
   },
 
   async getVendorSummary(projectId, vendorId) {

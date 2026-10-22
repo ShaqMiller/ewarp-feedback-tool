@@ -19,6 +19,7 @@ export default async function VendorSettingsPage({ params }: PageProps<"/project
       vendors={vendors.items.map((v) => ({
         id: v.id,
         name: v.name,
+        form: v.form,
         responseCount: v.responseCount,
         featureIds: features.items.filter((f) => f.vendorIds.includes(v.id)).map((f) => f.id),
       }))}

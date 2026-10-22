@@ -22,12 +22,13 @@ The front end calls the API **from its server**, never from the browser. You don
 
 ## Route index
 
-There are 26 routes: 23 reads (`GET`) and 3 vendor writes used by Settings → Vendors. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
+There are 27 routes: 23 reads (`GET`) and 4 writes. The writes are create project (New project page) and create, edit and delete vendor (Settings → Vendors). Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
 
 | Route | Query params | Returns | Used by |
 |---|---|---|---|
 | `/me` | | `CurrentUser` | Sidebar user badge |
 | `/projects` | | `{ items: ProjectListItem[], total }` | Project switcher, All projects |
+| **`POST`** `/projects` | body `{ name, description?, vendors: [{ name, form? }] }` | `201` `ProjectCreated` | New project page |
 | `/projects/:projectId` | | `Project` | Every project page |
 | `/projects/:projectId/summary` | filters | `ProjectSummary` | Dashboard KPIs |
 | `/projects/:projectId/analytics/responses-by-week` | `weeks`, filters | `{ weeks: [...] }` | Dashboard chart |
@@ -60,7 +61,7 @@ Sources for the exact shapes: the schema names refer to `components.schemas` in 
 | Topic | Rule |
 |---|---|
 | Base path | `/api/v1`. Every path below is relative to it. |
-| Method | Everything is `GET` except the three vendor writes (`POST`, `PATCH`, `DELETE`). Writes take JSON bodies (`Content-Type: application/json`). |
+| Method | Everything is `GET` except the four writes: `POST /projects` and the vendor `POST`, `PATCH` and `DELETE`. Writes take JSON bodies (`Content-Type: application/json`). |
 | IDs | Opaque strings. The front end never parses them, so UUIDs, numeric strings or prefixed IDs (`ftr_5`) all work. |
 | Scoping | Child IDs are always looked up inside their project. `/projects/A/features/X` returns **404** if feature X belongs to project B. |
 | Dates | ISO 8601 in UTC (`2026-10-14T12:00:00.000Z`). Week starts are dates only (`2026-10-12`). |
@@ -118,6 +119,46 @@ Used by: the project switcher and the All projects page.
   "total": 2
 }
 ```
+
+### `POST /projects`
+Used by: the **New project** page (Projects → New project, or the project switcher).
+
+In one transaction, this creates:
+- the project
+- its vendors
+- **one Google Forms survey per vendor**, named `<vendor> feedback`, with `source: google_forms` and `status: collecting`
+- the form routing (`form_configurations`) that `POST /webhook/google-form` uses to file each submission under the right project, vendor and survey
+
+Already-stored raw submissions whose `form` matches a new vendor's form are imported as responses, each with a `response.submitted` activity event. If any step fails, nothing is created.
+
+Request (`description` and each `form` are optional; a vendor's `form` defaults to its name):
+```json
+{
+  "name": "DIU platform feedback",
+  "description": "Feedback from platform users",
+  "vendors": [{ "name": "GovSignals" }, { "name": "Pryzm", "form": "Pryzm" }]
+}
+```
+Response `201`:
+```json
+{
+  "id": "prj_…",
+  "name": "DIU platform feedback",
+  "description": "Feedback from platform users",
+  "createdAt": "2026-10-22T…",
+  "vendors": [
+    { "id": "vnd_…", "name": "GovSignals", "form": "GovSignals", "surveyId": "srv_…" },
+    { "id": "vnd_…", "name": "Pryzm", "form": "Pryzm", "surveyId": "srv_…" }
+  ]
+}
+```
+Rules:
+- **Project name:** required, max 200 characters. **Description:** optional, max 2,000.
+- **Vendors:** at least 1 and at most 100.
+- **Vendor names:** required, and unique within the request ignoring case (`400`).
+- **Form names:** unique within the request ignoring case (`400`). A form can be configured only once across the whole database, so an existing mapping returns `409`.
+
+The UI shows `error.message` under the form, so keep it readable.
 
 ### `GET /projects/:projectId`
 Used by: the sidebar counts, breadcrumbs and dashboard subtitle (on every project page). Returns 404 for an unknown project.
@@ -272,6 +313,7 @@ Each item also includes:
 - `featureCount`: how many features the vendor offers
 - `exclusiveCount`: how many of those no other vendor offers
 - `sentiment`: likes, dislikes and wants from **its own users**
+- `form`: the Google Form name routed to this vendor, or `null` if none is configured. Settings → Vendors shows it, and flags vendors without a form, since no responses can reach them.
 
 The Vendors page shows all three. The dashboard ignores them.
 ```json
@@ -361,13 +403,13 @@ Params:
 ### Vendor writes: `POST`, `PATCH`, `DELETE`
 Used by: **Settings → Vendors**, where people add vendors, rename them and tick the features each one offers.
 
-Every response must belong to a vendor, so a vendor has to exist before feedback about it can be filed. **Your intake should match each incoming response to one of these vendors.** Do this either by the form it came from, or by a "which vendor" answer matched on name, ignoring case.
+Vendors added here work exactly like the vendors in `POST /projects`: **creating a vendor also creates its survey and its form routing**, so Google Form submissions start reaching it right away. It also **imports raw submissions already stored for that form** (with their `response.submitted` events), just as project creation does. This is how a project that started with only GovSignals picks up the Pryzm submissions already received. `form` is optional and defaults to the vendor name. A form can be configured only once across the whole database (`409`).
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
-| `POST /projects/:projectId/vendors` | `{ "name": "Prism" }` | `201` with the new `Vendor` (no features yet) | `400` blank or over 80 characters · `409` name already used in this project (ignoring case) |
-| `PATCH /projects/:projectId/vendors/:vendorId` | `{ "name"?: "…", "featureIds"?: ["ftr_2", …] }` (at least one) | `200` with the updated `Vendor` | `400` empty body, bad name, or a feature ID not in this project · `404` · `409` duplicate name |
-| `DELETE /projects/:projectId/vendors/:vendorId` | none | `204`, no body | `404` · `409` the vendor still has responses |
+| `POST /projects/:projectId/vendors` | `{ "name": "Pryzm", "form"?: "Pryzm" }` | `201` with the new `Vendor` (no features yet) | `400` blank or over 80 characters · `409` name already used in this project, or form already configured |
+| `PATCH /projects/:projectId/vendors/:vendorId` | `{ "name"?: "…", "form"?: "…", "featureIds"?: ["ftr_2", …] }` (at least one) | `200` with the updated `Vendor` | `400` empty body, bad name, or a feature ID not in this project · `404` · `409` duplicate name or form already configured |
+| `DELETE /projects/:projectId/vendors/:vendorId` | none | `204`, no body. Also frees its form, and removes its survey if nothing else uses it | `404` · `409` the vendor still has responses |
 
 Rules:
 - **Names:** trim them and collapse repeated spaces before saving and comparing.

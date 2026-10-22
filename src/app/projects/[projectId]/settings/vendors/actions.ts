@@ -5,33 +5,29 @@
 
 import { refresh } from "next/cache";
 import { api } from "@/lib/api";
-import { ApiError } from "@/lib/api/errors";
-
-export type ActionResult = { ok: true; message: string } | { ok: false; error: string } | null;
+import { tryWrite, type ActionResult } from "@/lib/actions";
 
 async function run(write: () => Promise<unknown>, success: string): Promise<ActionResult> {
-  try {
-    await write();
-  } catch (err) {
-    // 4xx messages are written for people (e.g. "A vendor named Prism already exists in this project.").
-    if (err instanceof ApiError && err.status < 500) return { ok: false, error: err.message };
-    console.error(err);
-    return { ok: false, error: "That didn't save. Check your connection and try again." };
-  }
+  const result = await tryWrite(write);
+  if (!result.ok) return result;
   refresh();
   return { ok: true, message: success };
 }
 
-const nameFrom = (formData: FormData) => String(formData.get("name") ?? "").trim();
+const field = (formData: FormData, key: string) => String(formData.get(key) ?? "").trim();
 
+// form is optional: left blank, the backend uses the vendor name.
 export async function createVendorAction(projectId: string, _prev: ActionResult, formData: FormData) {
-  const name = nameFrom(formData);
-  return run(() => api.createVendor(projectId, { name }), `Added ${name}.`);
+  const name = field(formData, "name");
+  const form = field(formData, "form") || undefined;
+  return run(() => api.createVendor(projectId, { name, form }), `Added ${name}.`);
 }
 
-export async function renameVendorAction(projectId: string, vendorId: string, _prev: ActionResult, formData: FormData) {
-  const name = nameFrom(formData);
-  return run(() => api.updateVendor(projectId, vendorId, { name }), `Renamed to ${name}.`);
+// Saves the name, and the Google Form name if one was entered (blank keeps the current form).
+export async function editVendorAction(projectId: string, vendorId: string, _prev: ActionResult, formData: FormData) {
+  const name = field(formData, "name");
+  const form = field(formData, "form") || undefined;
+  return run(() => api.updateVendor(projectId, vendorId, { name, form }), "Saved.");
 }
 
 export async function setVendorFeaturesAction(projectId: string, vendorId: string, _prev: ActionResult, formData: FormData) {

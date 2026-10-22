@@ -9,12 +9,12 @@ import { EmptyState, Pill } from "@/components/ui/primitives";
 import {
   createVendorAction,
   deleteVendorAction,
-  renameVendorAction,
+  editVendorAction,
   setVendorFeaturesAction,
-  type ActionResult,
 } from "@/app/projects/[projectId]/settings/vendors/actions";
+import type { ActionResult } from "@/lib/actions";
 
-export type SettingsVendor = { id: string; name: string; responseCount: number; featureIds: string[] };
+export type SettingsVendor = { id: string; name: string; form: string | null; responseCount: number; featureIds: string[] };
 export type SettingsFeature = { id: string; name: string; coverage: Coverage };
 
 const inputClass =
@@ -29,37 +29,93 @@ function FormMessage({ id, state }: { id: string; state: ActionResult }) {
   );
 }
 
-function AddVendorForm({ projectId }: { projectId: string }) {
-  const [state, action, pending] = useActionState(createVendorAction.bind(null, projectId), null);
-  const id = useId();
-  const failed = state?.ok === false;
+// Vendor name plus its Google Form name. The form defaults to the vendor name, as the backend does.
+function VendorFields({
+  id,
+  defaultName = "",
+  defaultForm = "",
+  invalid,
+  describedBy,
+  autoFocus,
+}: {
+  id: string;
+  defaultName?: string;
+  defaultForm?: string;
+  invalid: boolean;
+  describedBy?: string;
+  autoFocus?: boolean;
+}) {
+  // Controlled, because React resets uncontrolled fields after every form action, failed ones included.
+  const [name, setName] = useState(defaultName);
+  const [form, setForm] = useState(defaultForm);
   return (
-    <form action={action} className="grid gap-2">
-      <label htmlFor={`${id}-name`} className="text-xs font-medium text-muted">
-        Add a vendor
-      </label>
-      <div className="flex gap-2">
+    <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+      <div className="grid gap-1">
+        <label htmlFor={`${id}-name`} className="text-xs font-medium text-muted">
+          Vendor name
+        </label>
         <input
           id={`${id}-name`}
           name="name"
           required
           maxLength={80}
           autoComplete="off"
-          placeholder="Vendor name, e.g. Prism"
-          aria-invalid={failed}
-          aria-describedby={state ? `${id}-msg` : undefined}
-          className={cn(inputClass, "sm:max-w-sm")}
+          autoFocus={autoFocus}
+          placeholder="e.g. Pryzm"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
+          className={inputClass}
         />
+      </div>
+      <div className="grid gap-1">
+        <label htmlFor={`${id}-form`} className="text-xs font-medium text-muted">
+          Google Form name <span className="font-normal text-faint">(optional)</span>
+        </label>
+        <input
+          id={`${id}-form`}
+          name="form"
+          maxLength={200}
+          autoComplete="off"
+          value={form}
+          onChange={(e) => setForm(e.target.value)}
+          placeholder={name.trim() || "Same as the vendor name"}
+          aria-describedby={`${id}-form-hint`}
+          className={inputClass}
+        />
+      </div>
+      <p id={`${id}-form-hint`} className="text-[11.5px] text-muted sm:col-span-2">
+        Submissions are matched to this vendor by the form name the Google Form sends. Leave it blank to use the vendor name.
+      </p>
+    </div>
+  );
+}
+
+function AddVendorForm({ projectId }: { projectId: string }) {
+  // Remounting the fields clears them; only done after a successful add, so a failed attempt keeps what was typed.
+  const [formKey, setFormKey] = useState(0);
+  const [state, action, pending] = useActionState(async (prev: ActionResult, fd: FormData) => {
+    const result = await createVendorAction(projectId, prev, fd);
+    if (result?.ok) setFormKey((k) => k + 1);
+    return result;
+  }, null);
+  const id = useId();
+  return (
+    <form action={action} className="grid gap-3">
+      <h3 className="text-[13px] font-semibold">Add a vendor</h3>
+      <VendorFields key={formKey} id={id} invalid={state?.ok === false} describedBy={state ? `${id}-msg` : undefined} />
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="primary" disabled={pending}>
           {pending ? "Adding…" : "Add vendor"}
         </Button>
+        <FormMessage id={`${id}-msg`} state={state} />
       </div>
-      <FormMessage id={`${id}-msg`} state={state} />
     </form>
   );
 }
 
-type Mode = "view" | "rename" | "features" | "delete";
+type Mode = "view" | "edit" | "features" | "delete";
 
 function VendorRow({
   projectId,
@@ -78,8 +134,8 @@ function VendorRow({
     if (r?.ok) setMode("view");
     return r;
   };
-  const [renameState, rename, renaming] = useActionState(
-    async (prev: ActionResult, fd: FormData) => done(await renameVendorAction(projectId, vendor.id, prev, fd)),
+  const [editState, edit, saving] = useActionState(
+    async (prev: ActionResult, fd: FormData) => done(await editVendorAction(projectId, vendor.id, prev, fd)),
     null,
   );
   const [featureState, saveFeatures, savingFeatures] = useActionState(
@@ -103,10 +159,19 @@ function VendorRow({
           <p className="text-xs text-muted">
             {plural(vendor.responseCount, "response")} · offers {vendor.featureIds.length} of {plural(features.length, "feature")}
           </p>
+          <p className="text-xs text-muted">
+            {vendor.form ? (
+              <>
+                Google Form: <span className="font-medium text-ink">{vendor.form}</span>
+              </>
+            ) : (
+              <span className="text-gap">No Google Form connected, so no responses can reach this vendor</span>
+            )}
+          </p>
         </div>
         <div className="flex gap-1.5">
-          <Button variant="ghost" onClick={() => open("rename")} aria-expanded={mode === "rename"}>
-            Rename
+          <Button variant="ghost" onClick={() => open("edit")} aria-expanded={mode === "edit"}>
+            Edit
           </Button>
           <Button variant="ghost" onClick={() => open("features")} aria-expanded={mode === "features"}>
             Features
@@ -117,29 +182,23 @@ function VendorRow({
         </div>
       </div>
 
-      {mode === "rename" && (
-        <form action={rename} className="mt-3 grid gap-2 rounded-lg bg-sidebar p-3">
-          <label htmlFor={`${id}-rename`} className="text-xs font-medium text-muted">
-            Vendor name
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <input
-              id={`${id}-rename`}
-              name="name"
-              required
-              maxLength={80}
-              defaultValue={vendor.name}
-              autoFocus
-              aria-invalid={renameState?.ok === false}
-              aria-describedby={renameState ? `${id}-rename-msg` : undefined}
-              className={cn(inputClass, "flex-1 sm:max-w-sm")}
-            />
-            <Button type="submit" variant="primary" disabled={renaming}>
-              {renaming ? "Saving…" : "Save"}
+      {mode === "edit" && (
+        <form action={edit} className="mt-3 grid gap-3 rounded-lg bg-sidebar p-3">
+          <VendorFields
+            id={`${id}-edit`}
+            defaultName={vendor.name}
+            defaultForm={vendor.form ?? ""}
+            invalid={editState?.ok === false}
+            describedBy={editState ? `${id}-edit-msg` : undefined}
+            autoFocus
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
             </Button>
             <Button onClick={() => setMode("view")}>Cancel</Button>
+            <FormMessage id={`${id}-edit-msg`} state={editState} />
           </div>
-          <FormMessage id={`${id}-rename-msg`} state={renameState} />
         </form>
       )}
 
@@ -223,8 +282,9 @@ export function VendorSettings({
       <header className="grid gap-1 border-b border-line p-4">
         <h2 className="text-[13.5px] font-semibold">Vendors</h2>
         <p className="max-w-[70ch] text-xs text-muted">
-          The vendors being evaluated in this project. Each survey response is about one of them, so add a vendor here before
-          collecting feedback about it. Then tick the features it offers so coverage and fit are accurate.
+          The vendors being evaluated in this project. Each vendor has its own Google Form and survey, and submissions are
+          matched to a vendor by form name. Add a vendor before collecting feedback about it, then tick the features it
+          offers so coverage and fit are accurate.
         </p>
       </header>
       <div className="border-b border-line p-4">
