@@ -96,7 +96,7 @@ export type FeedbackApi = {
 };
 
 const source: FeedbackApi = process.env.FEEDBACK_API_URL
-  ? createHttpApi(process.env.FEEDBACK_API_URL.replace(/\/$/, ""))
+  ? createHttpApi(process.env.FEEDBACK_API_URL.replace(/\/$/, ""), process.env.FEEDBACK_API_TOKEN)
   : demoApi;
 
 // cache() de-duplicates calls with the same arguments within one request,

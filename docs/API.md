@@ -1,10 +1,56 @@
 # eWARP API contract
 
-This is what the front end expects from the backend. Each screen section calls its own endpoint, so nothing loads the whole project at once.
+The front end is finished against demo data. This document says what the backend needs to provide so the UI can switch to real data. It covers the routes, what each request looks like, and the exact JSON each one must return. How you build it (language, database, AI pipeline) is up to you.
 
-- TypeScript types for every response body: [`src/lib/api/types.ts`](../src/lib/api/types.ts)
-- Working reference implementation, using demo data: [`src/lib/api/demo/handlers.ts`](../src/lib/api/demo/handlers.ts)
-- The front end switches to the real backend when `FEEDBACK_API_URL` is set (for example `https://api.example.com/api/v1`).
+## Start here
+
+| What | Where | Use it to |
+|---|---|---|
+| **The contract** | [`docs/openapi.yaml`](openapi.yaml) | Every route, parameter and response schema. Open it in [Swagger Editor](https://editor.swagger.io) or import it into Postman. Most frameworks can generate server stubs or validators from it. |
+| **Live examples** | `npm run dev`, then `http://localhost:3000/api/v1/...` | Call any route and see the exact response the UI expects, using the demo data. For example: `curl http://localhost:3000/api/v1/projects/prj_1/summary` |
+| **Your test** | `npm run check:api -- https://your-api/api/v1` | Calls every route on your server, validates every response against the contract, and checks 404s. It exits non-zero on failure, so it can run in CI. |
+| **This guide** | below | What each number means and how it's calculated, plus examples. |
+
+When your API passes `check:api`, point the front end at it:
+
+```bash
+FEEDBACK_API_URL=https://your-api/api/v1     # required
+FEEDBACK_API_TOKEN=...                       # optional: sent as "Authorization: Bearer <token>"
+```
+
+The front end calls the API **from its server**, never from the browser. You don't need CORS, and the token is never exposed to users. Per-user authentication isn't decided yet. For now, a shared server-to-server token is enough.
+
+## Route index
+
+All 23 routes are `GET`. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
+
+| Route | Query params | Returns | Used by |
+|---|---|---|---|
+| `/me` | | `CurrentUser` | Sidebar user badge |
+| `/projects` | | `{ items: ProjectListItem[], total }` | Project switcher, All projects |
+| `/projects/:projectId` | | `Project` | Every project page |
+| `/projects/:projectId/summary` | filters | `ProjectSummary` | Dashboard KPIs |
+| `/projects/:projectId/analytics/responses-by-week` | `weeks`, filters | `{ weeks: [...] }` | Dashboard chart |
+| `/projects/:projectId/analytics/coverage` | | `{ all, some, none, total }` | Dashboard donut |
+| `/projects/:projectId/features` | `view`, `q`, `sort`, `limit`, filters | `{ items, total, facets }` | Dashboard, Features page |
+| `/projects/:projectId/features/:featureId` | | `Feature` | Feature page |
+| `/projects/:projectId/features/:featureId/summary` | | `AiSummary` | Feature page |
+| `/projects/:projectId/features/:featureId/responses` | `kind`, `limit`, filters | `{ items: FeatureResponse[], total }` | Feature page, Responses tab |
+| `/projects/:projectId/features/:featureId/vendors` | | `{ items: FeatureVendor[], total }` | Feature page |
+| `/projects/:projectId/features/:featureId/related` | `limit` | `{ items: RelatedFeature[], total }` | Feature page |
+| `/projects/:projectId/vendors` | `sort`, `limit`, filters | `{ items: VendorListItem[], total }` | Dashboard, Vendors page, filters |
+| `/projects/:projectId/vendors/:vendorId` | | `Vendor` | Vendor page |
+| `/projects/:projectId/vendors/:vendorId/summary` | | `AiSummary` | Vendor page |
+| `/projects/:projectId/vendors/:vendorId/requests` | filters | `{ items: VendorRequest[], total }` | Vendor page |
+| `/projects/:projectId/vendors/:vendorId/features` | filters | `{ items: VendorFeature[], total }` | Vendor page |
+| `/projects/:projectId/vendors/:vendorId/responses` | `limit`, filters | `{ items: ResponseWithMentions[], total }` | Vendor page, Responses tab |
+| `/projects/:projectId/responses` | `vendorId`, `surveyId`, `status`, `q`, `sort`, `limit`, `offset`, filters | `{ items, total, facets }` | Responses page |
+| `/projects/:projectId/responses/:responseId` | | `ResponseDetail` | Response page |
+| `/projects/:projectId/surveys` | | `{ items: Survey[], total }` | Surveys page |
+| `/projects/:projectId/graph` | filters | `{ responses, features, vendors, links }` | Relationship map |
+| `/projects/:projectId/activity` | `limit` | `{ items: ActivityEvent[], total }` | Dashboard activity |
+
+Sources for the exact shapes: the schema names refer to `components.schemas` in [`openapi.yaml`](openapi.yaml), and the same shapes appear as TypeScript in [`src/lib/api/types.ts`](../src/lib/api/types.ts). The demo implementation is [`src/lib/api/demo/handlers.ts`](../src/lib/api/demo/handlers.ts). It's the clearest reference for how each number is calculated.
 
 ## Conventions
 
@@ -16,7 +62,9 @@ This is what the front end expects from the backend. Each screen section calls i
 | Scoping | Child IDs are always looked up inside their project. `/projects/A/features/X` returns **404** if feature X belongs to project B. |
 | Dates | ISO 8601 in UTC (`2026-10-14T12:00:00.000Z`). Week starts are dates only (`2026-10-12`). |
 | Lists | `{ "items": [...], "total": 17 }`. `total` counts all matches before `limit` is applied. |
-| Errors | Non-2xx status with `{ "error": { "code": "not_found", "message": "Feature ftr_99 not found" } }`. The front end shows its 404 page on `404` and a retryable error everywhere else. |
+| Errors | Non-2xx status with `{ "error": { "code": "not_found", "message": "Feature ftr_99 not found" } }`. Use `404` for unknown IDs and `400` (`bad_request`) for invalid query params. The front end shows its 404 page on `404` and a retryable error everywhere else. |
+| Extra fields | Fine. The UI ignores fields it doesn't know. Missing or mistyped fields break it. |
+| Empty values | Return empty lists, `0` counts and `null` where a schema allows it (e.g. `lastResponseAt`, summary `text`). Never omit a field. |
 | Filters | `from`, `to` (inclusive ISO dates) and `group` (`pm`, `sponsor` or `other`) where an endpoint lists "Filters: yes". The UI doesn't send them yet, but it will once the date-range and group controls ship. |
 
 ## Data model
@@ -26,7 +74,7 @@ These are the tables the demo data is built from ([`demo/db.ts`](../src/lib/api/
 | Entity | Fields |
 |---|---|
 | `project` | `id, name, description, createdAt` |
-| `survey` | `id, projectId, name, createdAt` |
+| `survey` | `id, projectId, name, source, status, createdAt` (`source`: `google_forms`; `status`: `collecting` or `closed`) |
 | `vendor` | `id, projectId, name` |
 | `feature` | `id, projectId, name, createdAt` (created when AI first finds it in a response) |
 | `offering` | `featureId, vendorId` (the vendor offers the feature) |

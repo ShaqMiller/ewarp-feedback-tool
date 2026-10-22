@@ -1,0 +1,775 @@
+openapi: 3.1.0
+info:
+  title: eWARP Feedback API
+  version: 1.0.0
+  description: |
+    The contract between the eWARP front end and its backend. Every route is a read-only GET.
+
+    - The front end calls these from the server (Next.js), never from the browser.
+    - Base URL is whatever FEEDBACK_API_URL is set to, e.g. https://api.example.com/api/v1.
+    - IDs are opaque strings. Child IDs are scoped to their project: a feature, vendor or response
+      from another project must return 404.
+    - Dates are ISO 8601 in UTC. Lists are `{ items, total }`.
+    - Extra fields in responses are fine; missing or mistyped fields break the UI.
+
+    Human-readable guide with metric definitions: docs/API.md.
+    Reference implementation (demo data): src/lib/api/demo/handlers.ts, served at /api/v1 by the front end.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Reference API serving the demo data (run `npm run dev`)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /me:
+    get:
+      operationId: getMe
+      summary: The signed-in user
+      description: "Used by: sidebar user badge."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/CurrentUser" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects:
+    get:
+      operationId: listProjects
+      summary: Every project the user can see
+      description: "Used by: project switcher, All projects page."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectList" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: getProject
+      summary: One project with section counts
+      description: "Used by: every project page (sidebar counts, breadcrumbs, page subtitles)."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/summary:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: getSummary
+      summary: Headline numbers for the dashboard
+      description: "Used by: Dashboard KPI cards and the AI status pill."
+      parameters:
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectSummary" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/analytics/responses-by-week:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: getResponsesByWeek
+      summary: Response counts per week, split by respondent group
+      description: |
+        Used by: Dashboard "Responses by week". Returns exactly `weeks` buckets ending with the
+        current week (Monday start), oldest first, including empty weeks.
+      parameters:
+        - { name: weeks, in: query, schema: { type: integer, minimum: 1, maximum: 52, default: 6 } }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ResponsesByWeek" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/analytics/coverage:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: getCoverage
+      summary: How many features are offered by all, some or no vendors
+      description: "Used by: Dashboard \"Feature coverage\" donut."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/CoverageBreakdown" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: listFeatures
+      summary: Features AI found, with feedback and coverage
+      description: |
+        Used by: Dashboard "Most discussed features" (sort=mentions&limit=5) and the Features page.
+        `total` counts matches in the requested view; `facets` counts every view after `q` and filters.
+      parameters:
+        - name: view
+          in: query
+          description: "requested = at least one want; gap = no vendor offers it; pain = at least one dislike"
+          schema: { type: string, enum: [all, requested, gap, pain], default: all }
+        - { name: q, in: query, description: Case-insensitive search on the feature name, schema: { type: string, maxLength: 100 } }
+        - name: sort
+          in: query
+          description: "mentions: most mentioned first, ties by oldest createdAt. newest: by createdAt. name: A-Z."
+          schema: { type: string, enum: [mentions, newest, name], default: mentions }
+        - { $ref: "#/components/parameters/limit" }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FeatureList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features/{featureId}:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/featureId" }]
+    get:
+      operationId: getFeature
+      summary: One feature
+      description: "Used by: feature page header and \"What people said\" counts."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Feature" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features/{featureId}/summary:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/featureId" }]
+    get:
+      operationId: getFeatureSummary
+      summary: AI-written summary of the feature's feedback
+      description: "Used by: feature page \"Summary\". Return text: null when there is no summary yet (not 404)."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AiSummary" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features/{featureId}/responses:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/featureId" }]
+    get:
+      operationId: listFeatureResponses
+      summary: Responses that mention the feature, newest first
+      description: "Used by: feature page quotes, connections diagram and Responses tab."
+      parameters:
+        - { name: kind, in: query, schema: { $ref: "#/components/schemas/Sentiment" } }
+        - { $ref: "#/components/parameters/limit" }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FeatureResponseList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features/{featureId}/vendors:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/featureId" }]
+    get:
+      operationId: listFeatureVendors
+      summary: Every project vendor, whether it offers the feature, and its own users' feedback on it
+      description: "Used by: feature page \"Vendor coverage\" and connections diagram. Offering vendors first."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FeatureVendorList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features/{featureId}/related:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/featureId" }]
+    get:
+      operationId: listRelatedFeatures
+      summary: Features mentioned in the same responses
+      description: "Used by: feature page \"Mentioned alongside\". Sorted by sharedResponses, highest first."
+      parameters: [{ $ref: "#/components/parameters/limit" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/RelatedFeatureList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/vendors:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: listVendors
+      summary: Vendors with fit and feedback numbers
+      description: "Used by: Dashboard \"Vendor fit\", Vendors page, Features page coverage dots, Responses vendor filter."
+      parameters:
+        - name: sort
+          in: query
+          description: "fit: requestsMet desc, then responseCount desc, then name. name: A-Z."
+          schema: { type: string, enum: [fit, name], default: fit }
+        - { $ref: "#/components/parameters/limit" }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/VendorList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/vendors/{vendorId}:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/vendorId" }]
+    get:
+      operationId: getVendor
+      summary: One vendor
+      description: "Used by: vendor page header and Responses tab count."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Vendor" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/vendors/{vendorId}/summary:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/vendorId" }]
+    get:
+      operationId: getVendorSummary
+      summary: AI-written summary of the vendor's feedback
+      description: "Used by: vendor page \"Summary\". Return text: null when there is no summary yet."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AiSummary" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/vendors/{vendorId}/requests:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/vendorId" }]
+    get:
+      operationId: listVendorRequests
+      summary: Every requested feature in the project and whether this vendor offers it
+      description: "Used by: vendor page \"Requests\". Met first, then most wanted, then name."
+      parameters:
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/VendorRequestList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/vendors/{vendorId}/features:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/vendorId" }]
+    get:
+      operationId: listVendorFeatures
+      summary: Features this vendor offers, with its own users' feedback on each
+      description: "Used by: vendor page \"Features offered\". Most feedback first."
+      parameters:
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/VendorFeatureList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/vendors/{vendorId}/responses:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/vendorId" }]
+    get:
+      operationId: listVendorResponses
+      summary: Responses about this vendor, newest first, with the features AI linked
+      description: "Used by: vendor page quotes, \"Who responded\" and Responses tab (group chips)."
+      parameters:
+        - { $ref: "#/components/parameters/limit" }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ResponseWithMentionsList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/responses:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: listResponses
+      summary: Search, filter and page through responses
+      description: |
+        Used by: the Responses page. `total` counts every match (ignores limit/offset).
+        `facets` counts each chip option with every other filter applied but not its own
+        (group counts ignore `group`, status counts ignore `status`).
+      parameters:
+        - { name: vendorId, in: query, schema: { $ref: "#/components/schemas/Id" } }
+        - { name: surveyId, in: query, schema: { $ref: "#/components/schemas/Id" } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ResponseStatus" } }
+        - { name: q, in: query, description: Case-insensitive search across likes, dislikes and wants, schema: { type: string, maxLength: 100 } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, oldest], default: newest } }
+        - { $ref: "#/components/parameters/limit" }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ResponseList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/responses/{responseId}:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/responseId" }]
+    get:
+      operationId: getResponse
+      summary: One response with its survey and linked features
+      description: "Used by: the response page."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ResponseDetail" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/surveys:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: listSurveys
+      summary: Surveys collecting feedback for the project
+      description: "Used by: Surveys page and the Responses page survey filter label."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SurveyList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/graph:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: getGraph
+      summary: Everything the relationship map draws
+      description: |
+        Used by: the Relationship map. One request because the map draws every node at once.
+        Filters apply to responses (and therefore links); features and vendors are always the whole project.
+        This is the endpoint to paginate or pre-aggregate if projects reach thousands of responses.
+      parameters:
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/group" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectGraph" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/activity:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: listActivity
+      summary: Recent events in the project, newest first
+      description: "Used by: Dashboard \"Recent activity\"."
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ActivityList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Optional for now. If FEEDBACK_API_TOKEN is set on the front end, every request carries
+        `Authorization: Bearer <token>`. Per-user auth is still to be decided.
+
+  parameters:
+    projectId: { name: projectId, in: path, required: true, schema: { $ref: "#/components/schemas/Id" } }
+    featureId: { name: featureId, in: path, required: true, schema: { $ref: "#/components/schemas/Id" } }
+    vendorId: { name: vendorId, in: path, required: true, schema: { $ref: "#/components/schemas/Id" } }
+    responseId: { name: responseId, in: path, required: true, schema: { $ref: "#/components/schemas/Id" } }
+    limit: { name: limit, in: query, description: "Optional. Omit to return every match.", schema: { type: integer, minimum: 1, maximum: 500 } }
+    from: { name: from, in: query, description: "Only responses submitted on or after this date.", schema: { type: string, format: date } }
+    to: { name: to, in: query, description: "Only responses submitted on or before this date (inclusive).", schema: { type: string, format: date } }
+    group: { name: group, in: query, description: "Only responses from this respondent group.", schema: { $ref: "#/components/schemas/Group" } }
+
+  responses:
+    NotFound:
+      description: The project, or the item within that project, doesn't exist.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Error:
+      description: Anything else. The UI shows a retryable error for the section that failed.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Id: { type: string, minLength: 1, description: "Opaque ID. UUIDs, numeric strings or prefixed IDs all work." }
+    DateTime: { type: string, format: date-time }
+    Group: { type: string, enum: [pm, sponsor, other], description: "pm = Program Manager, sponsor = Sponsor's team, other = Other group" }
+    Sentiment: { type: string, enum: [like, dislike, want] }
+    Coverage: { type: string, enum: [all, some, none], description: "all: every project vendor offers it. none: no vendor does (a gap). some: anything in between." }
+    ResponseStatus: { type: string, enum: [analyzed, pending], description: "pending = AI hasn't read the response yet" }
+    Count: { type: integer, minimum: 0 }
+    NamedRef:
+      type: object
+      required: [id, name]
+      properties: { id: { $ref: "#/components/schemas/Id" }, name: { type: string } }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [not_found, bad_request, internal] }
+            message: { type: string }
+
+    SentimentCounts:
+      type: object
+      required: [like, dislike, want]
+      properties:
+        like: { $ref: "#/components/schemas/Count" }
+        dislike: { $ref: "#/components/schemas/Count" }
+        want: { $ref: "#/components/schemas/Count" }
+
+    GroupCounts:
+      type: object
+      required: [pm, sponsor, other]
+      properties:
+        pm: { $ref: "#/components/schemas/Count" }
+        sponsor: { $ref: "#/components/schemas/Count" }
+        other: { $ref: "#/components/schemas/Count" }
+
+    CurrentUser:
+      type: object
+      required: [id, name, role]
+      properties: { id: { $ref: "#/components/schemas/Id" }, name: { type: string }, role: { type: string } }
+
+    ProjectListItem:
+      type: object
+      required: [id, name, responseCount, lastResponseAt]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        responseCount: { $ref: "#/components/schemas/Count" }
+        lastResponseAt: { type: [string, "null"], format: date-time }
+    ProjectList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/ProjectListItem" } }, total: { $ref: "#/components/schemas/Count" } }
+
+    Project:
+      type: object
+      required: [id, name, description, createdAt, lastResponseAt, counts]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        description: { type: string }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        lastResponseAt: { type: [string, "null"], format: date-time }
+        counts:
+          type: object
+          required: [features, vendors, responses, surveys]
+          properties:
+            features: { $ref: "#/components/schemas/Count" }
+            vendors: { $ref: "#/components/schemas/Count" }
+            responses: { $ref: "#/components/schemas/Count" }
+            surveys: { $ref: "#/components/schemas/Count" }
+
+    ProjectSummary:
+      type: object
+      required: [responses, features, requests, sentiment, analysis]
+      properties:
+        responses:
+          type: object
+          required: [total, thisWeek]
+          properties:
+            total: { $ref: "#/components/schemas/Count" }
+            thisWeek: { $ref: "#/components/schemas/Count", description: Submitted in the last 7 days }
+        features:
+          type: object
+          required: [total, mentions]
+          properties:
+            total: { $ref: "#/components/schemas/Count" }
+            mentions: { $ref: "#/components/schemas/Count", description: "Every time AI linked a response to a feature" }
+        requests:
+          type: object
+          required: [total, unmet]
+          properties:
+            total: { $ref: "#/components/schemas/Count", description: Features with at least one want }
+            unmet: { $ref: "#/components/schemas/Count", description: "Of those, features no vendor offers" }
+        sentiment: { $ref: "#/components/schemas/SentimentCounts" }
+        analysis:
+          type: object
+          required: [processed, total]
+          properties:
+            processed: { $ref: "#/components/schemas/Count", description: Responses AI has read }
+            total: { $ref: "#/components/schemas/Count" }
+
+    ResponsesByWeek:
+      type: object
+      required: [weeks]
+      properties:
+        weeks:
+          type: array
+          items:
+            type: object
+            required: [weekStart, counts]
+            properties:
+              weekStart: { type: string, format: date, description: Monday of the week }
+              counts: { $ref: "#/components/schemas/GroupCounts" }
+
+    CoverageBreakdown:
+      type: object
+      required: [all, some, none, total]
+      properties:
+        all: { $ref: "#/components/schemas/Count" }
+        some: { $ref: "#/components/schemas/Count" }
+        none: { $ref: "#/components/schemas/Count" }
+        total: { $ref: "#/components/schemas/Count" }
+
+    FeatureListItem:
+      type: object
+      required: [id, name, coverage, vendorIds, mentions, sentiment]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        coverage: { $ref: "#/components/schemas/Coverage" }
+        vendorIds: { type: array, items: { $ref: "#/components/schemas/Id" }, description: Vendors that offer it }
+        mentions: { $ref: "#/components/schemas/Count" }
+        sentiment: { $ref: "#/components/schemas/SentimentCounts" }
+    FeatureList:
+      type: object
+      required: [items, total, facets]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/FeatureListItem" } }
+        total: { $ref: "#/components/schemas/Count" }
+        facets:
+          type: object
+          required: [all, requested, gap, pain]
+          properties:
+            all: { $ref: "#/components/schemas/Count" }
+            requested: { $ref: "#/components/schemas/Count" }
+            gap: { $ref: "#/components/schemas/Count" }
+            pain: { $ref: "#/components/schemas/Count" }
+    Feature:
+      allOf:
+        - { $ref: "#/components/schemas/FeatureListItem" }
+        - type: object
+          required: [createdAt]
+          properties: { createdAt: { $ref: "#/components/schemas/DateTime" } }
+
+    AiSummary:
+      type: object
+      required: [text, basedOn, generatedAt]
+      properties:
+        text: { type: [string, "null"], description: null until AI has written one }
+        basedOn: { $ref: "#/components/schemas/Count", description: Responses the summary was written from }
+        generatedAt: { type: [string, "null"], format: date-time }
+
+    SurveyResponse:
+      type: object
+      required: [id, surveyId, group, vendor, submittedAt, likes, dislikes, wants, analyzed]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        surveyId: { $ref: "#/components/schemas/Id" }
+        group: { $ref: "#/components/schemas/Group" }
+        vendor: { $ref: "#/components/schemas/NamedRef" }
+        submittedAt: { $ref: "#/components/schemas/DateTime" }
+        likes: { type: string, description: The answer to the likes question (may be empty) }
+        dislikes: { type: string }
+        wants: { type: string }
+        analyzed: { type: boolean, description: Whether AI has read it }
+
+    FeatureResponse:
+      allOf:
+        - { $ref: "#/components/schemas/SurveyResponse" }
+        - type: object
+          required: [kinds]
+          properties:
+            kinds: { type: array, minItems: 1, items: { $ref: "#/components/schemas/Sentiment" }, description: How this response mentioned the feature }
+    FeatureResponseList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/FeatureResponse" } }, total: { $ref: "#/components/schemas/Count" } }
+
+    FeatureVendor:
+      type: object
+      required: [vendor, offers, sentiment]
+      properties:
+        vendor: { $ref: "#/components/schemas/NamedRef" }
+        offers: { type: boolean }
+        sentiment: { $ref: "#/components/schemas/SentimentCounts", description: "Feedback on this feature from this vendor's own users" }
+    FeatureVendorList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/FeatureVendor" } }, total: { $ref: "#/components/schemas/Count" } }
+
+    RelatedFeature:
+      type: object
+      required: [id, name, coverage, sharedResponses]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        coverage: { $ref: "#/components/schemas/Coverage" }
+        sharedResponses: { type: integer, minimum: 1 }
+    RelatedFeatureList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/RelatedFeature" } }, total: { $ref: "#/components/schemas/Count" } }
+
+    VendorListItem:
+      type: object
+      required: [id, name, responseCount, requestsMet, requestsTotal, featureCount, exclusiveCount, sentiment]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        responseCount: { $ref: "#/components/schemas/Count" }
+        requestsMet: { $ref: "#/components/schemas/Count", description: Project requests this vendor offers }
+        requestsTotal: { $ref: "#/components/schemas/Count", description: Requests in the project (same for every vendor) }
+        featureCount: { $ref: "#/components/schemas/Count" }
+        exclusiveCount: { $ref: "#/components/schemas/Count", description: Offered features no other vendor offers }
+        sentiment: { $ref: "#/components/schemas/SentimentCounts", description: Feedback from its own users }
+    VendorList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/VendorListItem" } }, total: { $ref: "#/components/schemas/Count" } }
+    Vendor:
+      allOf:
+        - { $ref: "#/components/schemas/VendorListItem" }
+        - type: object
+          required: [featureIds]
+          properties: { featureIds: { type: array, items: { $ref: "#/components/schemas/Id" } } }
+
+    VendorRequest:
+      type: object
+      required: [feature, offers, wants]
+      properties:
+        feature: { $ref: "#/components/schemas/NamedRef" }
+        offers: { type: boolean }
+        wants: { type: integer, minimum: 1, description: Want mentions across the whole project }
+    VendorRequestList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/VendorRequest" } }, total: { $ref: "#/components/schemas/Count" } }
+
+    VendorFeature:
+      type: object
+      required: [id, name, exclusive, sentiment]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        exclusive: { type: boolean, description: No other vendor in the project offers it }
+        sentiment: { $ref: "#/components/schemas/SentimentCounts" }
+    VendorFeatureList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/VendorFeature" } }, total: { $ref: "#/components/schemas/Count" } }
+
+    ResponseMention:
+      type: object
+      required: [feature, kind]
+      properties:
+        feature: { $ref: "#/components/schemas/NamedRef" }
+        kind: { $ref: "#/components/schemas/Sentiment" }
+    ResponseWithMentions:
+      allOf:
+        - { $ref: "#/components/schemas/SurveyResponse" }
+        - type: object
+          required: [mentions]
+          properties:
+            mentions: { type: array, items: { $ref: "#/components/schemas/ResponseMention" }, description: Empty until AI has read the response }
+    ResponseWithMentionsList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/ResponseWithMentions" } }, total: { $ref: "#/components/schemas/Count" } }
+    ResponseList:
+      type: object
+      required: [items, total, facets]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ResponseWithMentions" } }
+        total: { $ref: "#/components/schemas/Count" }
+        facets:
+          type: object
+          required: [group, status]
+          properties:
+            group: { $ref: "#/components/schemas/GroupCounts" }
+            status:
+              type: object
+              required: [analyzed, pending]
+              properties:
+                analyzed: { $ref: "#/components/schemas/Count" }
+                pending: { $ref: "#/components/schemas/Count" }
+    ResponseDetail:
+      allOf:
+        - { $ref: "#/components/schemas/SurveyResponse" }
+        - type: object
+          required: [survey, mentions]
+          properties:
+            survey: { $ref: "#/components/schemas/NamedRef" }
+            mentions:
+              type: array
+              items:
+                allOf:
+                  - { $ref: "#/components/schemas/ResponseMention" }
+                  - type: object
+                    required: [coverage]
+                    properties: { coverage: { $ref: "#/components/schemas/Coverage" } }
+
+    Survey:
+      type: object
+      required: [id, name, source, status, createdAt, responseCount, analyzedCount, vendorCount, lastResponseAt, groups]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        source: { type: string, enum: [google_forms], description: Add values as more survey tools are connected }
+        status: { type: string, enum: [collecting, closed] }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        responseCount: { $ref: "#/components/schemas/Count" }
+        analyzedCount: { $ref: "#/components/schemas/Count" }
+        vendorCount: { $ref: "#/components/schemas/Count", description: Distinct vendors the responses are about }
+        lastResponseAt: { type: [string, "null"], format: date-time }
+        groups: { $ref: "#/components/schemas/GroupCounts" }
+    SurveyList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/Survey" } }, total: { $ref: "#/components/schemas/Count" } }
+
+    ProjectGraph:
+      type: object
+      required: [responses, features, vendors, links]
+      properties:
+        responses: { type: array, items: { $ref: "#/components/schemas/SurveyResponse" } }
+        features:
+          type: array
+          items:
+            type: object
+            required: [id, name, coverage, vendorIds]
+            properties:
+              id: { $ref: "#/components/schemas/Id" }
+              name: { type: string }
+              coverage: { $ref: "#/components/schemas/Coverage" }
+              vendorIds: { type: array, items: { $ref: "#/components/schemas/Id" } }
+        vendors: { type: array, items: { $ref: "#/components/schemas/NamedRef" } }
+        links:
+          type: array
+          description: One per mention
+          items:
+            type: object
+            required: [responseId, featureId, kind]
+            properties:
+              responseId: { $ref: "#/components/schemas/Id" }
+              featureId: { $ref: "#/components/schemas/Id" }
+              kind: { $ref: "#/components/schemas/Sentiment" }
+
+    ActivityEvent:
+      oneOf:
+        - type: object
+          required: [id, type, occurredAt, response]
+          properties:
+            id: { $ref: "#/components/schemas/Id" }
+            type: { const: response.submitted }
+            occurredAt: { $ref: "#/components/schemas/DateTime" }
+            response:
+              type: object
+              required: [id, group, vendor]
+              properties:
+                id: { $ref: "#/components/schemas/Id" }
+                group: { $ref: "#/components/schemas/Group" }
+                vendor: { $ref: "#/components/schemas/NamedRef" }
+        - type: object
+          required: [id, type, occurredAt, responseId, features]
+          properties:
+            id: { $ref: "#/components/schemas/Id" }
+            type: { const: features.linked }
+            occurredAt: { $ref: "#/components/schemas/DateTime" }
+            responseId: { $ref: "#/components/schemas/Id" }
+            features: { type: array, minItems: 1, items: { $ref: "#/components/schemas/NamedRef" } }
+        - type: object
+          required: [id, type, occurredAt, feature]
+          properties:
+            id: { $ref: "#/components/schemas/Id" }
+            type: { const: gap.detected }
+            occurredAt: { $ref: "#/components/schemas/DateTime" }
+            feature: { $ref: "#/components/schemas/NamedRef" }
+    ActivityList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/ActivityEvent" } }, total: { $ref: "#/components/schemas/Count" } }

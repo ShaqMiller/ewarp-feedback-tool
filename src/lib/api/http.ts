@@ -1,18 +1,21 @@
-// Talks to the real backend. Paths and query params match docs/API.md one to one.
+// Talks to the real backend. Paths and query params match docs/openapi.yaml one to one.
 
 import { ApiError } from "./errors";
 import type { FeedbackApi } from "./index";
 
 type Query = Record<string, string | number | undefined>;
 
-function createHttpApi(baseUrl: string): FeedbackApi {
+// `token`, if set, is sent as "Authorization: Bearer <token>" on every request.
+function createHttpApi(baseUrl: string, token?: string): FeedbackApi {
+  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+
   async function get<T>(path: string, query: Query = {}): Promise<T> {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) params.set(key, String(value));
     }
     const qs = params.size ? `?${params}` : "";
-    const res = await fetch(`${baseUrl}${path}${qs}`, { cache: "no-store" });
+    const res = await fetch(`${baseUrl}${path}${qs}`, { cache: "no-store", headers });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       throw new ApiError(res.status, body?.error?.message ?? `GET ${path} failed with ${res.status}`);
