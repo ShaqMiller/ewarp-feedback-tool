@@ -259,7 +259,7 @@ Used by: Feature page → "Mentioned alongside". Returns other features mentione
 Used by:
 - Dashboard → "Vendor fit"
 - The Features page (`sort=name`), to label the per-vendor coverage dots
-- The Vendors page, when it's built
+- The Vendors page
 
 Params:
 - `sort` is `fit` (default: `requestsMet` descending, then `responseCount` descending, then name) or `name`.
