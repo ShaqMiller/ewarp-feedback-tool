@@ -1,11 +1,12 @@
 // Reference API: serves the demo data at the exact paths in docs/openapi.yaml, so the backend team
 // can call any route (e.g. GET /api/v1/projects/prj_1/summary) and see the response the UI expects.
-// Turned off once FEEDBACK_API_URL points the app at the real backend.
+// Also accepts the vendor write routes (POST / PATCH / DELETE). Turned off once FEEDBACK_API_URL
+// points the app at the real backend.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { demoApi } from "@/lib/api/demo/handlers";
-import { ApiError } from "@/lib/api/errors";
-import type { ProjectFilters } from "@/lib/api/types";
+import { ApiError, ERROR_CODES } from "@/lib/api/errors";
+import type { ProjectFilters, VendorCreate, VendorUpdate } from "@/lib/api/types";
 
 class BadRequest extends Error {}
 
@@ -122,19 +123,32 @@ const ROUTES: [string, Handler][] = [
   ["projects/:projectId/activity", (p, q) => demoApi.listActivity(p.projectId, { limit: q.int("limit", 1, 100) })],
 ];
 
+// Write routes. The body arrives as parsed JSON; the demo handlers validate it (400 / 409).
+type WriteHandler = (params: Params, body: unknown) => Promise<unknown>;
+const WRITE_ROUTES: [method: string, pattern: string, status: number, handler: WriteHandler][] = [
+  ["POST", "projects/:projectId/vendors", 201, (p, body) => demoApi.createVendor(p.projectId, body as VendorCreate)],
+  ["PATCH", "projects/:projectId/vendors/:vendorId", 200, (p, body) => demoApi.updateVendor(p.projectId, p.vendorId, body as VendorUpdate)],
+  ["DELETE", "projects/:projectId/vendors/:vendorId", 204, (p) => demoApi.deleteVendor(p.projectId, p.vendorId)],
+];
+
+function matchPattern(pattern: string, segments: string[]): Params | null {
+  const parts = pattern.split("/");
+  if (parts.length !== segments.length) return null;
+  const params: Params = {};
+  const ok = parts.every((part, i) => {
+    if (part.startsWith(":")) {
+      params[part.slice(1)] = segments[i];
+      return true;
+    }
+    return part === segments[i];
+  });
+  return ok ? params : null;
+}
+
 function match(segments: string[]): [Handler, Params] | null {
   for (const [pattern, handler] of ROUTES) {
-    const parts = pattern.split("/");
-    if (parts.length !== segments.length) continue;
-    const params: Params = {};
-    const ok = parts.every((part, i) => {
-      if (part.startsWith(":")) {
-        params[part.slice(1)] = segments[i];
-        return true;
-      }
-      return part === segments[i];
-    });
-    if (ok) return [handler, params];
+    const params = matchPattern(pattern, segments);
+    if (params) return [handler, params];
   }
   return null;
 }
@@ -142,10 +156,17 @@ function match(segments: string[]): [Handler, Params] | null {
 const error = (status: number, code: string, message: string) =>
   NextResponse.json({ error: { code, message } }, { status });
 
+function toErrorResponse(err: unknown) {
+  if (err instanceof BadRequest) return error(400, "bad_request", err.message);
+  if (err instanceof ApiError && ERROR_CODES[err.status]) return error(err.status, ERROR_CODES[err.status], err.message);
+  console.error(err);
+  return error(500, "internal", "Something went wrong.");
+}
+
+const OFF = "The reference API is off because FEEDBACK_API_URL points at the real backend.";
+
 export async function GET(request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) {
-  if (process.env.FEEDBACK_API_URL) {
-    return error(404, "not_found", "The reference API is off because FEEDBACK_API_URL points at the real backend.");
-  }
+  if (process.env.FEEDBACK_API_URL) return error(404, "not_found", OFF);
   const { path } = await ctx.params;
   const route = match(path);
   if (!route) return error(404, "not_found", `No route GET /api/v1/${path.join("/")}`);
@@ -154,9 +175,37 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/v1/[...p
     const [handler, params] = route;
     return NextResponse.json(await handler(params, new Query(request.nextUrl.searchParams)));
   } catch (err) {
-    if (err instanceof BadRequest) return error(400, "bad_request", err.message);
-    if (err instanceof ApiError && err.status === 404) return error(404, "not_found", err.message);
-    console.error(err);
-    return error(500, "internal", "Something went wrong.");
+    return toErrorResponse(err);
   }
 }
+
+async function write(method: string, request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) {
+  if (process.env.FEEDBACK_API_URL) return error(404, "not_found", OFF);
+  const { path } = await ctx.params;
+  for (const [m, pattern, status, handler] of WRITE_ROUTES) {
+    const params = m === method ? matchPattern(pattern, path) : null;
+    if (!params) continue;
+    try {
+      let body: unknown = undefined;
+      if (method !== "DELETE") {
+        try {
+          body = await request.json();
+        } catch {
+          throw new BadRequest("The request body must be JSON.");
+        }
+        if (typeof body !== "object" || body === null || Array.isArray(body)) {
+          throw new BadRequest("The request body must be a JSON object.");
+        }
+      }
+      const result = await handler(params, body);
+      return status === 204 ? new NextResponse(null, { status }) : NextResponse.json(result, { status });
+    } catch (err) {
+      return toErrorResponse(err);
+    }
+  }
+  return error(404, "not_found", `No route ${method} /api/v1/${path.join("/")}`);
+}
+
+export const POST = (request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) => write("POST", request, ctx);
+export const PATCH = (request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) => write("PATCH", request, ctx);
+export const DELETE = (request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) => write("DELETE", request, ctx);

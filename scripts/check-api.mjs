@@ -3,6 +3,8 @@
 //   npm run check:api                                   -> the reference API (needs `npm run dev`)
 //   npm run check:api -- https://api.example.com/api/v1  -> your backend
 //   npm run check:api -- <url> --project prj_1           -> check a specific project
+//   npm run check:api -- <url> --writes                  -> also check the vendor write routes, using a
+//                                                          temporary "Contract check" vendor it deletes after
 //
 // Set FEEDBACK_API_TOKEN to send "Authorization: Bearer <token>".
 // It calls every route, validates each response body against its schema, checks that missing
@@ -162,6 +164,78 @@ if (!project) {
   await expect404(`${p}/features/__missing__`);
   await expect404(`${p}/vendors/__missing__`);
   await expect404(`${p}/responses/__missing__`);
+
+  if (args.includes("--writes")) {
+    await checkWrites(p, featureId);
+  } else {
+    console.log(color(2, "\nVendor write routes not checked. Add --writes to create, edit and delete a temporary test vendor."));
+  }
+}
+
+// Opt-in: creates a vendor named "Contract check <time>", edits it, then deletes it. Existing vendors are never touched.
+async function checkWrites(p, featureId) {
+  console.log("\nVendor writes (temporary test vendor)\n");
+
+  async function expect(method, path, body, status, schema, extra = () => []) {
+    const label = `${method} ${path}${body === undefined ? "" : ` ${JSON.stringify(body)}`} → ${status}`;
+    try {
+      const res = await send(method, path, body);
+      const problems = res.status === status ? [] : [`expected ${status}, got ${res.status}${res.body?.error?.message ? `: ${res.body.error.message}` : ""}`];
+      if (!problems.length && schema) {
+        const validate = validator(schema);
+        if (!validate(res.body)) problems.push(...validate.errors.slice(0, 8).map((e) => `${schema}${e.instancePath || ""} ${e.message}`));
+        else problems.push(...extra(res.body));
+      }
+      record(label, problems);
+      return problems.length ? null : res.body ?? true;
+    } catch (err) {
+      record(label, [`request failed: ${err.message}`]);
+      return null;
+    }
+  }
+
+  const name = `Contract check ${new Date().toISOString().slice(0, 19)}`;
+  const created = await expect("POST", `${p}/vendors`, { name }, 201, "Vendor", (v) =>
+    v.name === name && v.featureIds.length === 0 && v.responseCount === 0 ? [] : ["new vendor should have the sent name, no features and no responses"],
+  );
+  if (!created) {
+    console.log(color(33, "\nCouldn't create the test vendor; skipped the rest of the write checks."));
+    return;
+  }
+  const v = `${p}/vendors/${encodeURIComponent(created.id)}`;
+
+  await expect("POST", `${p}/vendors`, { name: name.toUpperCase() }, 409, "Error");
+  await expect("POST", `${p}/vendors`, { name: "   " }, 400, "Error");
+  await expect("PATCH", v, { name: `${name} (renamed)` }, 200, "Vendor", (b) =>
+    b.name === `${name} (renamed)` ? [] : ["name was not updated"],
+  );
+  if (featureId) {
+    await expect("PATCH", v, { featureIds: [featureId] }, 200, "Vendor", (b) =>
+      b.featureIds.length === 1 && b.featureIds[0] === featureId ? [] : ["featureIds should be exactly the list sent"],
+    );
+    await check(`${p}/features/${encodeURIComponent(featureId)}`, "Feature", (f) =>
+      f.vendorIds.includes(created.id) ? [] : ["the feature's vendorIds should now include the test vendor"],
+    );
+    await expect("PATCH", v, { featureIds: [] }, 200, "Vendor", (b) => (b.featureIds.length === 0 ? [] : ["featureIds: [] should clear the list"]));
+  }
+  await expect("PATCH", v, { featureIds: ["__missing__"] }, 400, "Error");
+  await expect("PATCH", v, {}, 400, "Error");
+  await expect("DELETE", v, undefined, 204);
+  await expect404(v);
+}
+
+async function send(method, path, body) {
+  const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) };
+  const res = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  let parsed = null;
+  if (res.status !== 204) {
+    try {
+      parsed = await res.json();
+    } catch {
+      // leave null
+    }
+  }
+  return { status: res.status, body: parsed };
 }
 
 const failed = results.filter((r) => r.problems.length);

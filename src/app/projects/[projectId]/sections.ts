@@ -3,7 +3,6 @@ import { api, orNotFound } from "@/lib/api";
 // Copy for sections whose pages are not built yet.
 export const SECTION_COPY = {
   insights: { title: "Insights", description: "Findings AI pulls from the responses, ranked by how many people they affect." },
-  settings: { title: "Settings", description: "Project name, vendors, survey connections and who has access." },
 } as const;
 
 export async function sectionPage(params: Promise<{ projectId: string }>, section: keyof typeof SECTION_COPY) {

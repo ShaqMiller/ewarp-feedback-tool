@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { api } from "@/lib/api";
+import { api, getDataSource } from "@/lib/api";
 import type { Project } from "@/lib/api/types";
+import { cn } from "@/lib/format";
 import { FolderIcon, GearIcon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/primitives";
 import { NavLink } from "./NavLink";
@@ -14,6 +15,21 @@ export function Logo({ compact }: { compact?: boolean }) {
       <span className="grid size-6 place-items-center rounded-[7px] bg-ink text-[13px] font-bold text-surface">e</span>
       {!compact && "eWARP"}
     </Link>
+  );
+}
+
+// Shown while this browser is on demo data, so sample numbers are never mistaken for real ones.
+// Links to Settings → Data source when there's a project to link through.
+export async function DemoBadge({ projectId }: { projectId?: string }) {
+  if ((await getDataSource()) !== "demo") return null;
+  const className =
+    "inline-flex h-[20px] items-center rounded-full bg-gap-soft px-2 text-[10.5px] font-semibold whitespace-nowrap text-gap";
+  return projectId ? (
+    <Link href={`/projects/${projectId}/settings/data`} className={cn(className, "hover:underline")} title="Change data source">
+      Demo data
+    </Link>
+  ) : (
+    <span className={className}>Demo data</span>
   );
 }
 
@@ -68,8 +84,11 @@ export function Sidebar({ project }: { project: Project }) {
 
   return (
     <aside className="sticky top-0 hidden h-dvh flex-col border-r border-line bg-sidebar px-2.5 py-3.5 lg:flex">
-      <div className="px-2 pt-0.5 pb-3.5">
+      <div className="flex items-center justify-between gap-2 px-2 pt-0.5 pb-3.5">
         <Logo />
+        <Suspense fallback={null}>
+          <DemoBadge projectId={project.id} />
+        </Suspense>
       </div>
       <Suspense fallback={<ProjectSwitcher current={project} projects={null} />}>
         <ProjectSwitcherLoader current={project} />

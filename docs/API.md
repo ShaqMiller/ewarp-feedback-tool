@@ -22,7 +22,7 @@ The front end calls the API **from its server**, never from the browser. You don
 
 ## Route index
 
-All 23 routes are `GET`. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
+There are 26 routes: 23 reads (`GET`) and 3 vendor writes used by Settings → Vendors. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
 
 | Route | Query params | Returns | Used by |
 |---|---|---|---|
@@ -40,6 +40,9 @@ All 23 routes are `GET`. Paths are relative to the base URL (e.g. `https://your-
 | `/projects/:projectId/features/:featureId/related` | `limit` | `{ items: RelatedFeature[], total }` | Feature page |
 | `/projects/:projectId/vendors` | `sort`, `limit`, filters | `{ items: VendorListItem[], total }` | Dashboard, Vendors page, filters |
 | `/projects/:projectId/vendors/:vendorId` | | `Vendor` | Vendor page |
+| **`POST`** `/projects/:projectId/vendors` | body `{ name }` | `201` `Vendor` | Settings → Vendors |
+| **`PATCH`** `/projects/:projectId/vendors/:vendorId` | body `{ name?, featureIds? }` | `200` `Vendor` | Settings → Vendors |
+| **`DELETE`** `/projects/:projectId/vendors/:vendorId` | | `204` | Settings → Vendors |
 | `/projects/:projectId/vendors/:vendorId/summary` | | `AiSummary` | Vendor page |
 | `/projects/:projectId/vendors/:vendorId/requests` | filters | `{ items: VendorRequest[], total }` | Vendor page |
 | `/projects/:projectId/vendors/:vendorId/features` | filters | `{ items: VendorFeature[], total }` | Vendor page |
@@ -57,7 +60,7 @@ Sources for the exact shapes: the schema names refer to `components.schemas` in 
 | Topic | Rule |
 |---|---|
 | Base path | `/api/v1`. Every path below is relative to it. |
-| Method | Every endpoint in this document is `GET`. |
+| Method | Everything is `GET` except the three vendor writes (`POST`, `PATCH`, `DELETE`). Writes take JSON bodies (`Content-Type: application/json`). |
 | IDs | Opaque strings. The front end never parses them, so UUIDs, numeric strings or prefixed IDs (`ftr_5`) all work. |
 | Scoping | Child IDs are always looked up inside their project. `/projects/A/features/X` returns **404** if feature X belongs to project B. |
 | Dates | ISO 8601 in UTC (`2026-10-14T12:00:00.000Z`). Week starts are dates only (`2026-10-12`). |
@@ -354,6 +357,24 @@ Params:
   "total": 3
 }
 ```
+
+### Vendor writes: `POST`, `PATCH`, `DELETE`
+Used by: **Settings → Vendors**, where people add vendors, rename them and tick the features each one offers.
+
+Every response must belong to a vendor, so a vendor has to exist before feedback about it can be filed. **Your intake should match each incoming response to one of these vendors.** Do this either by the form it came from, or by a "which vendor" answer matched on name, ignoring case.
+
+| Route | Body | Success | Errors |
+|---|---|---|---|
+| `POST /projects/:projectId/vendors` | `{ "name": "Prism" }` | `201` with the new `Vendor` (no features yet) | `400` blank or over 80 characters · `409` name already used in this project (ignoring case) |
+| `PATCH /projects/:projectId/vendors/:vendorId` | `{ "name"?: "…", "featureIds"?: ["ftr_2", …] }` (at least one) | `200` with the updated `Vendor` | `400` empty body, bad name, or a feature ID not in this project · `404` · `409` duplicate name |
+| `DELETE /projects/:projectId/vendors/:vendorId` | none | `204`, no body | `404` · `409` the vendor still has responses |
+
+Rules:
+- **Names:** trim them and collapse repeated spaces before saving and comparing.
+- **`featureIds` replaces the whole list** of features the vendor offers, and `[]` clears it. Changing it immediately changes coverage, gaps and vendor fit on every page.
+- **Never delete a vendor that has responses.** Refuse with `409`. Feedback must always keep its vendor.
+- **Error messages are shown to people** as-is under the form, so write them plainly, e.g. `A vendor named "Prism" already exists in this project.`
+- **Testing:** `npm run check:api -- <url> --writes` tests all of this using a temporary "Contract check …" vendor, which it deletes afterwards.
 
 ### `GET /projects/:projectId/responses`
 Used by: the Responses page, where every param comes from its toolbar, chips and pagination, kept in the page URL.

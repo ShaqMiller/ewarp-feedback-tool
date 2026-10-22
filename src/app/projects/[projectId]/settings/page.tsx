@@ -1,9 +1,7 @@
-import type { Metadata } from "next";
-import { SectionPlaceholder } from "@/components/shell/SectionPlaceholder";
-import { SECTION_COPY, sectionPage } from "../sections";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: SECTION_COPY.settings.title };
-
+// Vendors is the first settings section.
 export default async function SettingsPage({ params }: PageProps<"/projects/[projectId]/settings">) {
-  return <SectionPlaceholder {...await sectionPage(params, "settings")} />;
+  const { projectId } = await params;
+  redirect(`/projects/${projectId}/settings/vendors`);
 }

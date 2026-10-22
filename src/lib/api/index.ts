@@ -1,7 +1,9 @@
 // The one place the UI gets data from. Each function is one backend endpoint (see docs/API.md).
-// Set FEEDBACK_API_URL (e.g. https://api.example.com/api/v1) to use the real backend;
-// leave it unset to use the demo data in ./demo.
+// Set FEEDBACK_API_URL (e.g. https://api.example.com/api/v1) to use the real backend; leave it unset
+// to use the demo data in ./demo. With a backend set, Settings → Data source can still switch a
+// browser to demo data.
 
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { demoApi } from "./demo/handlers";
@@ -29,6 +31,8 @@ import type {
   ProjectSummary,
   ResponsesByWeek,
   Vendor,
+  VendorCreate,
+  VendorUpdate,
   VendorFeature,
   VendorListItem,
   VendorRequest,
@@ -80,6 +84,9 @@ export type FeedbackApi = {
     query?: ProjectFilters & { sort?: VendorSort; limit?: number },
   ): Promise<List<VendorListItem>>;
   getVendor(projectId: Id, vendorId: Id): Promise<Vendor>;
+  createVendor(projectId: Id, body: VendorCreate): Promise<Vendor>;
+  updateVendor(projectId: Id, vendorId: Id, body: VendorUpdate): Promise<Vendor>;
+  deleteVendor(projectId: Id, vendorId: Id): Promise<void>;
   getVendorSummary(projectId: Id, vendorId: Id): Promise<AiSummary>;
   listVendorRequests(projectId: Id, vendorId: Id, filters?: ProjectFilters): Promise<List<VendorRequest>>;
   listVendorFeatures(projectId: Id, vendorId: Id, filters?: ProjectFilters): Promise<List<VendorFeature>>;
@@ -95,36 +102,62 @@ export type FeedbackApi = {
   listActivity(projectId: Id, query?: { limit?: number }): Promise<List<ActivityEvent>>;
 };
 
-const source: FeedbackApi = process.env.FEEDBACK_API_URL
-  ? createHttpApi(process.env.FEEDBACK_API_URL.replace(/\/$/, ""), process.env.FEEDBACK_API_TOKEN)
-  : demoApi;
+// ---- Which data the app shows: the real backend ("live") or the built-in demo data ----
 
-// cache() de-duplicates calls with the same arguments within one request,
+export type DataSource = "live" | "demo";
+export const DATA_SOURCE_COOKIE = "ewarp-data-source";
+
+const BACKEND_URL = process.env.FEEDBACK_API_URL?.replace(/\/$/, "");
+const live = BACKEND_URL ? createHttpApi(BACKEND_URL, process.env.FEEDBACK_API_TOKEN) : null;
+
+// For Settings: the backend's host, or null when no backend is configured.
+export const backendHost = BACKEND_URL ? new URL(BACKEND_URL).host : null;
+
+// Live when a backend is configured, unless this browser chose demo data in Settings → Data source.
+export const getDataSource = cache(async (): Promise<DataSource> => {
+  if (!live) return "demo";
+  return (await cookies()).get(DATA_SOURCE_COOKIE)?.value === "demo" ? "demo" : "live";
+});
+
+// Forwards a call to whichever source this request uses.
+function forward<K extends keyof FeedbackApi>(name: K): FeedbackApi[K] {
+  const call = async (...args: unknown[]) => {
+    const source = (await getDataSource()) === "live" ? live! : demoApi;
+    return (source[name] as (...a: unknown[]) => unknown)(...args);
+  };
+  return call as FeedbackApi[K];
+}
+
+// cache() de-duplicates reads with the same arguments within one request,
 // so the layout, page and metadata can all ask for the project without extra round trips.
 export const api: FeedbackApi = {
-  getMe: cache(source.getMe),
-  listProjects: cache(source.listProjects),
-  getProject: cache(source.getProject),
-  getSummary: cache(source.getSummary),
-  getResponsesByWeek: cache(source.getResponsesByWeek),
-  getCoverage: cache(source.getCoverage),
-  listFeatures: cache(source.listFeatures),
-  getFeature: cache(source.getFeature),
-  getFeatureSummary: cache(source.getFeatureSummary),
-  listFeatureResponses: cache(source.listFeatureResponses),
-  listFeatureVendors: cache(source.listFeatureVendors),
-  listRelatedFeatures: cache(source.listRelatedFeatures),
-  listVendors: cache(source.listVendors),
-  getVendor: cache(source.getVendor),
-  getVendorSummary: cache(source.getVendorSummary),
-  listVendorRequests: cache(source.listVendorRequests),
-  listVendorFeatures: cache(source.listVendorFeatures),
-  listVendorResponses: cache(source.listVendorResponses),
-  listResponses: cache(source.listResponses),
-  getResponse: cache(source.getResponse),
-  listSurveys: cache(source.listSurveys),
-  getGraph: cache(source.getGraph),
-  listActivity: cache(source.listActivity),
+  getMe: cache(forward("getMe")),
+  listProjects: cache(forward("listProjects")),
+  getProject: cache(forward("getProject")),
+  getSummary: cache(forward("getSummary")),
+  getResponsesByWeek: cache(forward("getResponsesByWeek")),
+  getCoverage: cache(forward("getCoverage")),
+  listFeatures: cache(forward("listFeatures")),
+  getFeature: cache(forward("getFeature")),
+  getFeatureSummary: cache(forward("getFeatureSummary")),
+  listFeatureResponses: cache(forward("listFeatureResponses")),
+  listFeatureVendors: cache(forward("listFeatureVendors")),
+  listRelatedFeatures: cache(forward("listRelatedFeatures")),
+  listVendors: cache(forward("listVendors")),
+  getVendor: cache(forward("getVendor")),
+  // Writes are never cached.
+  createVendor: forward("createVendor"),
+  updateVendor: forward("updateVendor"),
+  deleteVendor: forward("deleteVendor"),
+  getVendorSummary: cache(forward("getVendorSummary")),
+  listVendorRequests: cache(forward("listVendorRequests")),
+  listVendorFeatures: cache(forward("listVendorFeatures")),
+  listVendorResponses: cache(forward("listVendorResponses")),
+  listResponses: cache(forward("listResponses")),
+  getResponse: cache(forward("getResponse")),
+  listSurveys: cache(forward("listSurveys")),
+  getGraph: cache(forward("getGraph")),
+  listActivity: cache(forward("listActivity")),
 };
 
 // Turns a 404 from the API into the route's not-found page.

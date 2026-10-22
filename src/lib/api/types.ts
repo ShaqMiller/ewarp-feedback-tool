@@ -174,6 +174,13 @@ export type Vendor = VendorListItem & {
   featureIds: Id[]; // features it offers
 };
 
+// POST /projects/:projectId/vendors (body)
+export type VendorCreate = { name: string };
+
+// PATCH /projects/:projectId/vendors/:vendorId (body). Send only what changes.
+// featureIds replaces the full list of features the vendor offers.
+export type VendorUpdate = { name?: string; featureIds?: Id[] };
+
 // GET /projects/:projectId/vendors/:vendorId/requests
 // Every requested feature in the project, and whether this vendor offers it.
 export type VendorRequest = {

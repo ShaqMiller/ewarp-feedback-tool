@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: eWARP Feedback API
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    The contract between the eWARP front end and its backend. Every route is a read-only GET.
+    The contract between the eWARP front end and its backend. Every route is a read-only GET except
+    the three vendor write routes used by Settings → Vendors (POST, PATCH, DELETE).
 
     - The front end calls these from the server (Next.js), never from the browser.
     - Base URL is whatever FEEDBACK_API_URL is set to, e.g. https://api.example.com/api/v1.
@@ -203,6 +204,21 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/VendorList" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createVendor
+      summary: Add a vendor to the project
+      description: |
+        Used by: Settings → Vendors → "Add vendor". The new vendor offers no features until they are set with PATCH.
+        Trim the name and collapse repeated spaces before saving. Names are unique per project, ignoring case.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VendorCreate" } } }
+      responses:
+        "201": { description: Created. Returns the new vendor., content: { application/json: { schema: { $ref: "#/components/schemas/Vendor" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
 
   /projects/{projectId}/vendors/{vendorId}:
     parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/vendorId" }]
@@ -213,6 +229,33 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Vendor" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateVendor
+      summary: Rename a vendor and/or set the features it offers
+      description: |
+        Used by: Settings → Vendors → "Rename" and "Features". Send only the fields that change (at least one).
+        `featureIds` replaces the vendor's whole list of offered features; send [] to clear it.
+        Changing it changes coverage, gaps and vendor fit everywhere in the app.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VendorUpdate" } } }
+      responses:
+        "200": { description: Updated. Returns the vendor., content: { application/json: { schema: { $ref: "#/components/schemas/Vendor" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteVendor
+      summary: Remove a vendor
+      description: |
+        Used by: Settings → Vendors → "Delete". Removes the vendor and its offered-feature list.
+        Refuse with 409 while any response is about this vendor, so feedback never loses its vendor.
+      responses:
+        "204": { description: Deleted. No body. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
 
   /projects/{projectId}/vendors/{vendorId}/summary:
@@ -372,6 +415,16 @@ components:
   responses:
     NotFound:
       description: The project, or the item within that project, doesn't exist.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    BadRequest:
+      description: |
+        Invalid query params or request body (code "bad_request"). For write routes the UI shows `message`
+        under the form, so write it for people, e.g. "Enter a vendor name."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Conflict:
+      description: |
+        The write clashes with existing data (code "conflict"), e.g. a duplicate vendor name or deleting a vendor
+        that has responses. The UI shows `message` as-is, e.g. "A vendor named \"Prism\" already exists in this project."
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     Error:
       description: Anything else. The UI shows a retryable error for the section that failed.
@@ -617,6 +670,21 @@ components:
         - type: object
           required: [featureIds]
           properties: { featureIds: { type: array, items: { $ref: "#/components/schemas/Id" } } }
+
+    VendorCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80, description: "Trimmed; must not be blank; unique in the project ignoring case" }
+    VendorUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        featureIds:
+          type: array
+          items: { $ref: "#/components/schemas/Id" }
+          description: "Replaces the full list of features the vendor offers. Every ID must be a feature in this project (else 400)."
 
     VendorRequest:
       type: object

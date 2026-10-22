@@ -61,7 +61,7 @@ export const surveys: SurveyRow[] = [
   { id: "srv_3", projectId: "prj_3", name: "Training records feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(12) },
 ];
 
-export const vendors: VendorRow[] = [
+const vendorSeed: VendorRow[] = [
   { id: "vnd_1", projectId: "prj_1", name: "Vendor 1" },
   { id: "vnd_2", projectId: "prj_1", name: "Vendor 2" },
   { id: "vnd_3", projectId: "prj_1", name: "Vendor 3" },
@@ -96,9 +96,15 @@ const featureSeed: [Id, Id, string, Id[]][] = [
   ["ftr_21", "prj_3", "Compliance reports", ["vnd_7"]],
 ];
 
-export const offerings: OfferingRow[] = featureSeed.flatMap(([featureId, , , vendorIds]) =>
-  vendorIds.map((vendorId) => ({ featureId, vendorId })),
-);
+// Vendors and offerings can be edited from Settings. Next.js loads the app pages and the /api/v1 route
+// as separate module copies, so these two tables live on globalThis to be shared (until the server restarts).
+const shared = globalThis as typeof globalThis & { __ewarpDemo?: { vendors: VendorRow[]; offerings: OfferingRow[] } };
+shared.__ewarpDemo ??= {
+  vendors: vendorSeed,
+  offerings: featureSeed.flatMap(([featureId, , , vendorIds]) => vendorIds.map((vendorId) => ({ featureId, vendorId }))),
+};
+export const vendors = shared.__ewarpDemo.vendors;
+export const offerings = shared.__ewarpDemo.offerings;
 
 type ResponseSeed = Omit<ResponseRow, "projectId" | "surveyId" | "submittedAt" | "analyzedAt"> & {
   daysAgo: number;

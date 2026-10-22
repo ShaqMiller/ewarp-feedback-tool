@@ -53,6 +53,30 @@ function vendorOr404(projectId: Id, vendorId: Id) {
   return vendor;
 }
 
+// Write validation. The rules match docs/openapi.yaml; messages are shown to people as-is.
+const NAME_MAX = 80;
+
+function validVendorName(projectId: Id, input: unknown, exceptId?: Id): string {
+  if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter a vendor name.");
+  const name = input.trim().replace(/\s+/g, " ");
+  if (name.length > NAME_MAX) throw new ApiError(400, `Vendor names can be at most ${NAME_MAX} characters.`);
+  const taken = db.vendors.some(
+    (v) => v.projectId === projectId && v.id !== exceptId && v.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (taken) throw new ApiError(409, `A vendor named "${name}" already exists in this project.`);
+  return name;
+}
+
+function validFeatureIds(projectId: Id, input: unknown): Id[] {
+  if (!Array.isArray(input) || input.some((id) => typeof id !== "string")) {
+    throw new ApiError(400, "featureIds must be a list of feature IDs.");
+  }
+  const ids = [...new Set(input as string[])];
+  const unknown = ids.filter((id) => !db.features.some((f) => f.id === id && f.projectId === projectId));
+  if (unknown.length > 0) throw new ApiError(400, `Unknown feature ${unknown.length === 1 ? "ID" : "IDs"}: ${unknown.join(", ")}`);
+  return ids;
+}
+
 function responsesMentioning(featureId: Id) {
   const ids = new Set(db.mentions.filter((m) => m.featureId === featureId).map((m) => m.responseId));
   return db.responses.filter((r) => ids.has(r.id));
@@ -374,6 +398,47 @@ export const demoApi: FeedbackApi = {
     const vendor = vendorItems(projectId).find((v) => v.id === vendorId);
     if (!vendor) throw new ApiError(404, `Vendor ${vendorId} not found in project ${projectId}`);
     return vendor;
+  },
+
+  // Demo writes change the in-memory tables, so they reset when the server restarts.
+  async createVendor(projectId, body) {
+    await sleep();
+    projectOr404(projectId);
+    const name = validVendorName(projectId, body?.name);
+    const id = `vnd_${crypto.randomUUID().slice(0, 8)}`;
+    db.vendors.push({ id, projectId, name });
+    return demoApi.getVendor(projectId, id);
+  },
+
+  async updateVendor(projectId, vendorId, body) {
+    await sleep();
+    const vendor = vendorOr404(projectId, vendorId);
+    if (body?.name === undefined && body?.featureIds === undefined) {
+      throw new ApiError(400, "Send a name, featureIds, or both.");
+    }
+    const name = body.name === undefined ? undefined : validVendorName(projectId, body.name, vendorId);
+    const featureIds = body.featureIds === undefined ? undefined : validFeatureIds(projectId, body.featureIds);
+    if (name !== undefined) vendor.name = name;
+    if (featureIds !== undefined) {
+      // Replace this vendor's offerings with exactly the given list.
+      for (let i = db.offerings.length - 1; i >= 0; i--) if (db.offerings[i].vendorId === vendorId) db.offerings.splice(i, 1);
+      db.offerings.push(...featureIds.map((featureId) => ({ featureId, vendorId })));
+    }
+    return demoApi.getVendor(projectId, vendorId);
+  },
+
+  async deleteVendor(projectId, vendorId) {
+    await sleep();
+    const vendor = vendorOr404(projectId, vendorId);
+    const responses = db.responses.filter((r) => r.vendorId === vendorId).length;
+    if (responses > 0) {
+      throw new ApiError(
+        409,
+        `${vendor.name} has ${responses} ${responses === 1 ? "response" : "responses"}, so it can't be deleted. Move or remove them first.`,
+      );
+    }
+    db.vendors.splice(db.vendors.indexOf(vendor), 1);
+    for (let i = db.offerings.length - 1; i >= 0; i--) if (db.offerings[i].vendorId === vendorId) db.offerings.splice(i, 1);
   },
 
   async getVendorSummary(projectId, vendorId) {
