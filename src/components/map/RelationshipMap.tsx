@@ -13,7 +13,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import type { Id, ProjectGraph } from "@/lib/api/types";
 import { MinusIcon, PlusIcon, ScanIcon } from "@/components/ui/icons";
-import { layoutGraph, type Selection } from "./layout";
+import { ADMIN_ID, adminFeatureIds, layoutGraph, type Selection } from "./layout";
 import { MapDrawer } from "./MapDrawer";
 import { nodeTypes } from "./nodes";
 
@@ -22,6 +22,7 @@ type Props = { graph: ProjectGraph; projectId: string };
 // The selected node lives in the URL (?focus=ftr_5) so other pages can link to it.
 function selectionFor(graph: ProjectGraph, id: Id | null): Selection {
   if (!id) return null;
+  if (id === ADMIN_ID && adminFeatureIds(graph).size > 0) return { kind: "admin", id };
   if (graph.responses.some((r) => r.id === id)) return { kind: "response", id };
   if (graph.features.some((f) => f.id === id)) return { kind: "feature", id };
   if (graph.vendors.some((v) => v.id === id)) return { kind: "vendor", id };
@@ -96,7 +97,7 @@ function MapCanvas({ graph, projectId }: Props) {
   };
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
-    if (node.type === "response" || node.type === "feature" || node.type === "vendor") {
+    if (node.type === "response" || node.type === "feature" || node.type === "vendor" || node.type === "admin") {
       select({ kind: node.type, id: node.id });
     }
   };

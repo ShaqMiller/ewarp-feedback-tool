@@ -348,9 +348,10 @@ export type Survey = {
 // Everything the relationship map draws, in one request: it's the one view that needs every node at once.
 export type ProjectGraph = {
   responses: SurveyResponse[];
-  features: { id: Id; name: string; coverage: Coverage; vendorIds: Id[] }[];
+  features: { id: Id; name: string; coverage: Coverage; vendorIds: Id[]; source: FeatureSource }[];
   vendors: { id: Id; name: string }[];
   links: { responseId: Id; featureId: Id; kind: Sentiment }[]; // one per mention
+  manual: (FeedbackEntry & { featureId: Id })[]; // likes / dislikes / wants admins entered by hand, after filters
 };
 
 // GET /projects/:projectId/activity

@@ -268,15 +268,18 @@ function signalsFor(projectId: Id, filters: ProjectFilters = {}): Signal[] {
     const r = responses.get(m.responseId);
     return r ? [{ featureId: m.featureId, kind: m.kind, vendorId: r.vendorId, group: r.group as RespondentGroup }] : [];
   });
+  const manual = manualFor(projectId, filters).map((e) => ({ featureId: e.featureId, kind: e.kind, vendorId: e.vendorId, group: e.group }));
+  return [...survey, ...manual];
+}
+
+// Manual feedback entries in the project, after filters.
+function manualFor(projectId: Id, filters: ProjectFilters = {}) {
   const from = filters.from ? Date.parse(filters.from) : -Infinity;
   const to = filters.to ? Date.parse(filters.to) + DAY : Infinity;
-  const manual = db.feedback
-    .filter((e) => {
-      const t = Date.parse(e.createdAt);
-      return e.projectId === projectId && t >= from && t < to && (!filters.group || broadGroup(e.group) === filters.group);
-    })
-    .map((e) => ({ featureId: e.featureId, kind: e.kind, vendorId: e.vendorId, group: e.group }));
-  return [...survey, ...manual];
+  return db.feedback.filter((e) => {
+    const t = Date.parse(e.createdAt);
+    return e.projectId === projectId && t >= from && t < to && (!filters.group || broadGroup(e.group) === filters.group);
+  });
 }
 
 const vendorIdsOf = (projectId: Id) => db.vendors.filter((v) => v.projectId === projectId).map((v) => v.id);
@@ -1002,13 +1005,16 @@ export const demoApi: DemoApi = {
       responses: rs.map(toSurveyResponse),
       features: db.features
         .filter((f) => f.projectId === projectId)
-        .map((f) => ({ id: f.id, name: f.name, coverage: coverageOf(f.id, vendorIds), vendorIds: offeredBy(f.id) })),
+        .map((f) => ({ id: f.id, name: f.name, coverage: coverageOf(f.id, vendorIds), vendorIds: offeredBy(f.id), source: f.source })),
       vendors: db.vendors.filter((v) => v.projectId === projectId).map((v) => ({ id: v.id, name: v.name })),
       links: mentionsFor(new Set(rs.map((r) => r.id))).map((m) => ({
         responseId: m.responseId,
         featureId: m.featureId,
         kind: m.kind,
       })),
+      manual: manualFor(projectId, filters)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .map((e) => ({ ...toFeedbackEntry(e), featureId: e.featureId })),
     };
   },
 

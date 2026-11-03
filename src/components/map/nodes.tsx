@@ -55,6 +55,29 @@ function ResponseNode({ data }: NodeProps) {
   );
 }
 
+// Where manual feedback and admin-added features come from. Sits in the responses row.
+function AdminNode({ data }: NodeProps) {
+  const { entries, ...state } = data as { entries: number } & NodeState;
+  return (
+    <div
+      className={cn(
+        "flex cursor-pointer flex-col justify-center rounded-lg border border-ink/40 bg-surface px-2.5 hover:border-ink",
+        stateClass(state),
+      )}
+      style={{ width: SIZES.response.w, height: SIZES.response.h }}
+    >
+      <span className="flex items-center gap-1.5 text-[11px] leading-tight font-semibold">
+        <span className="size-1.5 shrink-0 rounded-full bg-ink" />
+        Admins
+      </span>
+      <span className="text-[10.5px] leading-tight text-muted">
+        {entries} {entries === 1 ? "entry" : "entries"}
+      </span>
+      <Handle type="source" position={Position.Bottom} style={hidden} />
+    </div>
+  );
+}
+
 function FeatureNode({ data }: NodeProps) {
   const { feature, ...state } = data as { feature: ProjectGraph["features"][number] } & NodeState;
   const gap = feature.coverage === "none";
@@ -97,4 +120,4 @@ function VendorNode({ data }: NodeProps) {
   );
 }
 
-export const nodeTypes = { band: BandNode, response: ResponseNode, feature: FeatureNode, vendor: VendorNode };
+export const nodeTypes = { band: BandNode, response: ResponseNode, admin: AdminNode, feature: FeatureNode, vendor: VendorNode };

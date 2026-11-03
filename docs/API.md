@@ -79,7 +79,7 @@ There are 42 routes: 28 reads (`GET`) and 14 writes. Writes are admin only. Path
 | `/projects/:projectId/weights` | | `Weights` | Settings → Weights |
 | **`PUT`** `/projects/:projectId/weights` | body `{ groups?, features? }` | `200` `Weights` | Settings → Weights |
 | `/projects/:projectId/scores` | | `{ items: VendorScore[], total, mix }` | Vendor page "Score" |
-| `/projects/:projectId/graph` | filters | `{ responses, features, vendors, links }` | Relationship map |
+| `/projects/:projectId/graph` | filters | `{ responses, features, vendors, links, manual }` | Relationship map |
 | `/projects/:projectId/activity` | `limit` | `{ items: ActivityEvent[], total }` | Dashboard activity |
 
 Sources for the exact shapes: the schema names refer to `components.schemas` in [`openapi.yaml`](openapi.yaml), and the same shapes appear as TypeScript in [`src/lib/api/types.ts`](../src/lib/api/types.ts). The demo implementation is [`src/lib/api/demo/handlers.ts`](../src/lib/api/demo/handlers.ts). It's the clearest reference for how each number is calculated.
@@ -517,8 +517,9 @@ Used by: the Relationship map, where `group` comes from its chips.
 This is the one view that draws every response, feature and vendor at once, so it gets them all in a single request instead of many small ones.
 - `responses` use the same shape as elsewhere, including the answer text, which the map's detail drawer shows.
 - `links` has one entry per mention.
-- Features with no links and no vendors aren't drawn.
-- Filters: yes. They filter responses and therefore links. Features and vendors are always the whole project.
+- `manual` has every manual feedback entry (same shape as `FeedbackEntry`, plus `featureId`). The map draws them from one **Admins** node in the responses row, and links that node to every manual feature (`features[].source` is `manual`) too, so features an admin added don't float on their own.
+- Features with no links, no manual entries, no vendors and `source: "survey"` aren't drawn.
+- Filters: yes. They filter responses and therefore links, and manual entries by `createdAt` and group. Features and vendors are always the whole project.
 ```json
 {
   "responses": [

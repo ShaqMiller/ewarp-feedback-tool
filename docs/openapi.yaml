@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: eWARP Feedback API
-  version: 1.3.0
+  version: 1.4.0
   description: |
     The contract between the eWARP front end and its backend.
 
@@ -1182,19 +1182,20 @@ components:
 
     ProjectGraph:
       type: object
-      required: [responses, features, vendors, links]
+      required: [responses, features, vendors, links, manual]
       properties:
         responses: { type: array, items: { $ref: "#/components/schemas/SurveyResponse" } }
         features:
           type: array
           items:
             type: object
-            required: [id, name, coverage, vendorIds]
+            required: [id, name, coverage, vendorIds, source]
             properties:
               id: { $ref: "#/components/schemas/Id" }
               name: { type: string }
               coverage: { $ref: "#/components/schemas/Coverage" }
               vendorIds: { type: array, items: { $ref: "#/components/schemas/Id" } }
+              source: { $ref: "#/components/schemas/FeatureSource" }
         vendors: { type: array, items: { $ref: "#/components/schemas/NamedRef" } }
         links:
           type: array
@@ -1206,6 +1207,15 @@ components:
               responseId: { $ref: "#/components/schemas/Id" }
               featureId: { $ref: "#/components/schemas/Id" }
               kind: { $ref: "#/components/schemas/Sentiment" }
+        manual:
+          type: array
+          description: Manual feedback entries (admins' likes / dislikes / wants), after the date and group filters. The map draws them from one "Admins" node.
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/FeedbackEntry" }
+              - type: object
+                required: [featureId]
+                properties: { featureId: { $ref: "#/components/schemas/Id" } }
 
     ActivityEvent:
       oneOf:

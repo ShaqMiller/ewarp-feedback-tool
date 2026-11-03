@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { GROUP_LABELS, type Id, type ProjectGraph, type Sentiment } from "@/lib/api/types";
+import { GROUP_LABELS, RESPONDENT_GROUP_LABELS, type Id, type ProjectGraph, type Sentiment } from "@/lib/api/types";
 import { cn, formatDate, plural } from "@/lib/format";
 import { XIcon } from "@/components/ui/icons";
 import { Pill } from "@/components/ui/primitives";
-import type { Selection } from "./layout";
+import { ADMIN_ID, adminFeatureIds, type Selection } from "./layout";
 
 type Props = {
   graph: ProjectGraph;
@@ -64,6 +64,10 @@ function Guide() {
         Each response sits above the vendor it&apos;s about. Lines run from a response to the features it mentions, and from each
         feature to the vendors that offer it.
       </p>
+      <p className="text-muted">
+        Likes, dislikes and wants an admin added by hand, and features an admin created, come from the <b className="font-semibold">Admins</b>{" "}
+        node at the left of the responses row.
+      </p>
       <p className="text-muted">Select any response, feature or vendor to trace its connections.</p>
     </div>
   );
@@ -102,11 +106,65 @@ export function MapDrawer({ graph, selection, projectId, onSelect }: Props) {
     </Link>
   );
 
+  // One manual entry: kind, who it's for and the note. `showFeature` names the feature (on the Admins drawer).
+  const entryRow = (e: ProjectGraph["manual"][number], showFeature: boolean) => (
+    <JumpRow
+      key={e.id}
+      onClick={() => onSelect(showFeature ? { kind: "feature", id: e.featureId } : { kind: "admin", id: ADMIN_ID })}
+    >
+      <span className={cn("mt-1 size-1.5 shrink-0 self-start rounded-full", KIND_DOT[e.kind])} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">
+          {showFeature && <b className="font-semibold">{featureName(e.featureId)} · </b>}
+          {KIND_LABEL[e.kind]} · {RESPONDENT_GROUP_LABELS[e.group]}
+          {e.vendor && ` · ${e.vendor.name}`}
+        </span>
+        {e.note && <span className="block truncate text-faint">{e.note}</span>}
+      </span>
+    </JumpRow>
+  );
+
+  if (selection.kind === "admin") {
+    const manualFeatures = graph.features.filter((f) => f.source === "manual");
+    return (
+      <div className="flex flex-col gap-3.5">
+        {header(
+          "Added by admins",
+          "Admins",
+          <p className="mt-0.5 text-xs text-muted">Feedback and features entered by hand, not from a survey.</p>,
+        )}
+        <Section title={plural(graph.manual.length, "feedback entry", "feedback entries")}>
+          {graph.manual.length === 0 ? (
+            <p className="text-xs text-faint">None in the current view. Add some from a feature page.</p>
+          ) : (
+            graph.manual.map((e) => entryRow(e, true))
+          )}
+        </Section>
+        <Section title="Features added by admins">
+          {manualFeatures.length === 0 ? (
+            <p className="text-xs text-faint">None yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {manualFeatures.map((f) => (
+                <Chip key={f.id} onClick={() => onSelect({ kind: "feature", id: f.id })}>
+                  {f.name}
+                </Chip>
+              ))}
+            </div>
+          )}
+        </Section>
+      </div>
+    );
+  }
+
   if (selection.kind === "feature") {
     const f = graph.features.find((f) => f.id === selection.id);
     if (!f) return <Guide />;
     const links = graph.links.filter((l) => l.featureId === f.id);
-    const counts = Object.fromEntries(KINDS.map((k) => [k, links.filter((l) => l.kind === k).length])) as Record<Sentiment, number>;
+    const manual = graph.manual.filter((e) => e.featureId === f.id);
+    const counts = Object.fromEntries(
+      KINDS.map((k) => [k, links.filter((l) => l.kind === k).length + manual.filter((e) => e.kind === k).length]),
+    ) as Record<Sentiment, number>;
     const offering = graph.vendors.filter((v) => f.vendorIds.includes(v.id));
     return (
       <div className="flex flex-col gap-3.5">
@@ -144,6 +202,17 @@ export function MapDrawer({ graph, selection, projectId, onSelect }: Props) {
             })
           )}
         </Section>
+        {(manual.length > 0 || adminFeatureIds(graph).has(f.id)) && (
+          <Section title={manual.length ? `Added by admins (${manual.length})` : "Added by admins"}>
+            {manual.length === 0 ? (
+              <JumpRow onClick={() => onSelect({ kind: "admin", id: ADMIN_ID })}>
+                <span className="text-muted">An admin created this feature. No feedback added yet.</span>
+              </JumpRow>
+            ) : (
+              manual.map((e) => entryRow(e, false))
+            )}
+          </Section>
+        )}
         <Section title="Offered by">
           {offering.length === 0 ? (
             <p className="text-xs text-faint">No vendor offers this yet.</p>

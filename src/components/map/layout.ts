@@ -3,6 +3,7 @@ import { GROUP_LABELS, type Id, type ProjectGraph, type Sentiment } from "@/lib/
 
 // Lays the project out in three rows (responses, features, vendors) as React Flow nodes and edges.
 // Each vendor's responses sit above it; each feature sits near what it connects to.
+// Feedback admins entered by hand, and features they added, hang off one "Admins" node at the left of the responses row.
 
 export const SIZES = {
   response: { w: 80, h: 44 },
@@ -21,14 +22,26 @@ const ROWS = {
   vendors: { y: 470, height: 150, label: "Vendors" },
 };
 
-export type Selection = { kind: "response" | "feature" | "vendor"; id: Id } | null;
+export type Selection = { kind: "response" | "feature" | "vendor" | "admin"; id: Id } | null;
+
+export const ADMIN_ID = "admins"; // the one node every manual entry and manual feature comes from
+
+// Features linked to the Admins node: ones with manual feedback, plus manual features (so they don't float alone).
+export function adminFeatureIds(graph: ProjectGraph): Set<Id> {
+  return new Set([...graph.manual.map((e) => e.featureId), ...graph.features.filter((f) => f.source === "manual").map((f) => f.id)]);
+}
 
 // Which nodes stay bright for a selection; null when nothing is selected.
 export function litIds(graph: ProjectGraph, selection: Selection): Set<Id> | null {
   if (!selection) return null;
   const offeredBy = (fid: Id) => graph.features.find((f) => f.id === fid)?.vendorIds ?? [];
   const { kind, id } = selection;
+  const adminFeatures = adminFeatureIds(graph);
 
+  if (kind === "admin") {
+    const fids = [...adminFeatures];
+    return new Set([ADMIN_ID, ...fids, ...fids.flatMap(offeredBy)]);
+  }
   if (kind === "response") {
     const r = graph.responses.find((r) => r.id === id);
     const fids = graph.links.filter((l) => l.responseId === id).map((l) => l.featureId);
@@ -38,10 +51,11 @@ export function litIds(graph: ProjectGraph, selection: Selection): Set<Id> | nul
     const rids = graph.responses.filter((r) => r.vendor.id === id).map((r) => r.id);
     const mentioned = graph.links.filter((l) => rids.includes(l.responseId)).map((l) => l.featureId);
     const offered = graph.features.filter((f) => f.vendorIds.includes(id)).map((f) => f.id);
-    return new Set([id, ...rids, ...mentioned, ...offered]);
+    const manual = graph.manual.filter((e) => e.vendor?.id === id).map((e) => e.featureId);
+    return new Set([id, ...rids, ...mentioned, ...offered, ...(manual.length ? [ADMIN_ID, ...manual] : [])]);
   }
   const rids = graph.links.filter((l) => l.featureId === id).map((l) => l.responseId);
-  return new Set([id, ...rids, ...offeredBy(id)]);
+  return new Set([id, ...rids, ...offeredBy(id), ...(adminFeatures.has(id) ? [ADMIN_ID] : [])]);
 }
 
 const STROKE: Record<Sentiment, string> = {
@@ -55,10 +69,16 @@ export function layoutGraph(graph: ProjectGraph, selection: Selection) {
   const lit = litIds(graph, selection);
   const dimmed = (id: Id) => lit !== null && !lit.has(id);
   const vendorIds = new Set(graph.vendors.map((v) => v.id));
+  const adminFeatures = adminFeatureIds(graph);
+  const hasAdmin = adminFeatures.size > 0;
 
-  // 1. x of every response and vendor: responses grouped above their vendor.
+  // 1. x of every response and vendor: responses grouped above their vendor, the Admins node first.
   const x = new Map<Id, number>();
   let width = 0;
+  if (hasAdmin) {
+    x.set(ADMIN_ID, SPACING / 2);
+    width = SPACING + GROUP_GAP;
+  }
   graph.vendors.forEach((v, i) => {
     const mine = graph.responses.filter((r) => r.vendor.id === v.id);
     const groupWidth = Math.max(mine.length, 1) * SPACING;
@@ -73,6 +93,7 @@ export function layoutGraph(graph: ProjectGraph, selection: Selection) {
     const xs = [
       ...graph.links.filter((l) => l.featureId === fid).map((l) => x.get(l.responseId)),
       ...vids.filter((v) => vendorIds.has(v)).map((v) => x.get(v)),
+      adminFeatures.has(fid) ? x.get(ADMIN_ID) : undefined,
     ].filter((n): n is number => n !== undefined);
     return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
   };
@@ -111,6 +132,15 @@ export function layoutGraph(graph: ProjectGraph, selection: Selection) {
       position: { x: LEFT + x.get(r.id)! - SIZES.response.w / 2, y: ROWS.responses.y - SIZES.response.h / 2 },
       data: { response: r, selected: selection?.id === r.id, dimmed: dimmed(r.id) },
       ariaLabel: `Response from ${GROUP_LABELS[r.group]}, ${r.vendor.name}`,
+    });
+  }
+  if (hasAdmin) {
+    nodes.push({
+      id: ADMIN_ID,
+      type: "admin",
+      position: { x: LEFT + x.get(ADMIN_ID)! - SIZES.response.w / 2, y: ROWS.responses.y - SIZES.response.h / 2 },
+      data: { entries: graph.manual.length, selected: selection?.id === ADMIN_ID, dimmed: dimmed(ADMIN_ID) },
+      ariaLabel: `Added by admins: ${graph.manual.length} feedback entries`,
     });
   }
   placed.forEach((f, i) => {
@@ -163,6 +193,37 @@ export function layoutGraph(graph: ProjectGraph, selection: Selection) {
       },
       zIndex: on ? 1 : 0,
     });
+  }
+  // Admins -> feature: one line per feature and kind they entered, and a faint dashed one to manual features with none.
+  const adminKinds = new Map<Id, Set<Sentiment>>();
+  for (const e of graph.manual) adminKinds.set(e.featureId, (adminKinds.get(e.featureId) ?? new Set()).add(e.kind));
+  for (const fid of adminFeatures) {
+    if (!featureIds.has(fid)) continue;
+    const on = active(ADMIN_ID, fid);
+    const kinds = adminKinds.get(fid);
+    if (!kinds) {
+      edges.push({
+        id: `${ADMIN_ID}->${fid}`,
+        source: ADMIN_ID,
+        target: fid,
+        style: { stroke: on ? "var(--color-faint)" : "var(--color-line)", strokeWidth: 1.25, strokeDasharray: "2 4" },
+      });
+      continue;
+    }
+    for (const kind of kinds) {
+      edges.push({
+        id: `${ADMIN_ID}->${fid}-${kind}`,
+        source: ADMIN_ID,
+        target: fid,
+        style: {
+          stroke: on ? STROKE[kind] : quiet ? "var(--color-line)" : "var(--color-cov-some)",
+          strokeWidth: on ? 2 : 1.25,
+          strokeDasharray: DASH[kind],
+          strokeLinecap: "round",
+        },
+        zIndex: on ? 1 : 0,
+      });
+    }
   }
   for (const r of graph.responses) {
     if (graph.links.some((l) => l.responseId === r.id) || !vendorIds.has(r.vendor.id)) continue;
