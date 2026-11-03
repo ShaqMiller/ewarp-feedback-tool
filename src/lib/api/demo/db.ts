@@ -44,7 +44,6 @@ export type FeedbackRow = {
 export type GroupWeightRow = { projectId: Id; group: RespondentGroup; weight: number }; // missing = 1
 // Demo only: passwords are kept as plain text in memory. The real backend stores salted hashes.
 export type UserRow = { id: Id; email: string; name: string; role: Role; password: string; createdAt: string };
-export type SessionRow = { userId: Id; expiresAt: number };
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -232,10 +231,9 @@ type Editable = {
   feedback: FeedbackRow[];
   groupWeights: GroupWeightRow[];
   users: UserRow[];
-  sessions: Map<string, SessionRow>;
 };
 const shared = globalThis as typeof globalThis & { __ewarpDemo?: Editable };
-if (!shared.__ewarpDemo?.sessions) {
+if (!shared.__ewarpDemo?.users) {
   shared.__ewarpDemo = {
     vendors: vendorSeed,
     offerings: [
@@ -246,7 +244,6 @@ if (!shared.__ewarpDemo?.sessions) {
     feedback: feedbackSeed,
     groupWeights: [{ projectId: "prj_1", group: "sponsor", weight: 2 }],
     users: userSeed,
-    sessions: new Map(),
   };
 }
 export const vendors = shared.__ewarpDemo.vendors;
@@ -255,4 +252,3 @@ export const features = shared.__ewarpDemo.features;
 export const feedback = shared.__ewarpDemo.feedback;
 export const groupWeights = shared.__ewarpDemo.groupWeights;
 export const users = shared.__ewarpDemo.users;
-export const sessions = shared.__ewarpDemo.sessions;

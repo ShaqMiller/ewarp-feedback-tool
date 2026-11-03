@@ -1,6 +1,7 @@
 // Answers each endpoint from the demo tables, computing exactly what docs/API.md describes.
 // The real backend replaces this file; nothing in the UI imports it directly.
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { ApiError } from "../errors";
 import type { FeedbackApi } from "../index";
 import {
@@ -169,6 +170,28 @@ function userOr404(userId: Id) {
 
 const adminCount = () => db.users.filter((u) => u.role === "admin").length;
 const SESSION_HOURS = 12;
+
+// Demo sign-in tokens are signed and carry the user, like a JWT, so any server instance can check them.
+// (On Vercel each request can land on a different instance, so a session kept in memory would be lost.)
+// Demo data only; set DEMO_SESSION_SECRET to keep the fallback secret out of play.
+const SESSION_SECRET = process.env.DEMO_SESSION_SECRET ?? "ewarp-demo-session";
+type TokenClaims = CurrentUser & { exp: number };
+const sign = (payload: string) => createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+
+function createToken(user: db.UserRow, exp: number) {
+  const payload = Buffer.from(JSON.stringify({ ...toMe(user), exp } satisfies TokenClaims)).toString("base64url");
+  return `${payload}.${sign(payload)}`;
+}
+
+function readToken(token: string | undefined): TokenClaims | null {
+  const [payload, signature] = token?.split(".") ?? [];
+  if (!payload || !signature) return null;
+  const expected = Buffer.from(sign(payload));
+  const given = Buffer.from(signature);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+  const claims = JSON.parse(Buffer.from(payload, "base64url").toString()) as TokenClaims;
+  return claims.exp > Date.now() ? claims : null;
+}
 
 function validVendorName(projectId: Id, input: unknown, exceptId?: Id): string {
   if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter a vendor name.");
@@ -400,10 +423,8 @@ export const demoApi: DemoApi = {
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const user = db.users.find((u) => u.email === email);
     if (!user || user.password !== body?.password) throw new ApiError(401, "That email and password don't match.");
-    const token = crypto.randomUUID();
     const expiresAt = Date.now() + SESSION_HOURS * 3_600_000;
-    db.sessions.set(token, { userId: user.id, expiresAt });
-    return { token, expiresAt: new Date(expiresAt).toISOString(), user: toMe(user) };
+    return { token: createToken(user, expiresAt), expiresAt: new Date(expiresAt).toISOString(), user: toMe(user) };
   },
 
   async listUsers() {
@@ -456,7 +477,6 @@ export const demoApi: DemoApi = {
     const user = userOr404(userId);
     if (user.role === "admin" && adminCount() <= 1) throw new ApiError(409, "This is the only admin, so it can't be deleted.");
     db.users.splice(db.users.indexOf(user), 1);
-    for (const [token, session] of db.sessions) if (session.userId === userId) db.sessions.delete(token);
   },
 
   async listProjects() {
@@ -1021,11 +1041,12 @@ const ADMIN_ONLY = new Set<string>([
 ]);
 
 export function demoApiFor(token: string | undefined): FeedbackApi {
-  const signedIn = () => {
-    const session = token ? db.sessions.get(token) : undefined;
-    const user = session && session.expiresAt > Date.now() ? db.users.find((u) => u.id === session.userId) : undefined;
-    if (!user) throw new ApiError(401, "Sign in to continue.");
-    return user;
+  // The user's current row when this instance has it (so role changes apply), else what the token says.
+  const signedIn = (): CurrentUser => {
+    const claims = readToken(token);
+    if (!claims) throw new ApiError(401, "Sign in to continue.");
+    const user = db.users.find((u) => u.id === claims.id);
+    return user ? toMe(user) : { id: claims.id, name: claims.name, email: claims.email, role: claims.role };
   };
   const allowed = (name: string) => {
     const user = signedIn();
@@ -1046,7 +1067,7 @@ export function demoApiFor(token: string | undefined): FeedbackApi {
     login: demoApi.login,
     async getMe() {
       await sleep();
-      return toMe(signedIn());
+      return signedIn();
     },
     createFeature: async (projectId, body) => demoApi.createFeature(projectId, body, allowed("createFeature").id),
     addFeatureFeedback: async (projectId, featureId, body) =>
