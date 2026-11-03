@@ -262,6 +262,11 @@ export type WeightsUpdate = {
   features?: { id: Id; weight: number }[];
 };
 
+// POST /projects/:projectId/responses/reread (admin): ask the AI to read responses again.
+// Omit responseIds to queue every response that has no linked features yet.
+export type RereadRequest = { responseIds?: Id[] };
+export type RereadResult = { queued: number }; // read again on the AI's next pass, within about a minute
+
 // GET /projects/:projectId/scores: vendors ranked by score.
 // Each like / dislike / want counts its group's weight; each feature counts its own weight.
 //   demand(f) = weighted wants for f;  coverage = share of weighted demand the vendor offers (0-1)

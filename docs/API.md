@@ -36,7 +36,7 @@ People sign in with email and password. `POST /auth/login` returns a token; the 
 
 ## Route index
 
-There are 41 routes: 28 reads (`GET`) and 13 writes. Writes are admin only. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
+There are 42 routes: 28 reads (`GET`) and 14 writes. Writes are admin only. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
 
 | Route | Query params | Returns | Used by |
 |---|---|---|---|
@@ -73,6 +73,7 @@ There are 41 routes: 28 reads (`GET`) and 13 writes. Writes are admin only. Path
 | `/projects/:projectId/vendors/:vendorId/features` | filters | `{ items: VendorFeature[], total }` | Vendor page |
 | `/projects/:projectId/vendors/:vendorId/responses` | `limit`, filters | `{ items: ResponseWithMentions[], total }` | Vendor page, Responses tab |
 | `/projects/:projectId/responses` | `vendorId`, `surveyId`, `status`, `q`, `sort`, `limit`, `offset`, filters | `{ items, total, facets }` | Responses page |
+| **`POST`** `/projects/:projectId/responses/reread` | body `{ responseIds? }` | `202` `{ queued }` (admin) | "Reread with AI" on the response page and Surveys page |
 | `/projects/:projectId/responses/:responseId` | | `ResponseDetail` | Response page |
 | `/projects/:projectId/surveys` | | `{ items: Survey[], total }` | Surveys page |
 | `/projects/:projectId/weights` | | `Weights` | Settings → Weights |
@@ -468,6 +469,13 @@ Each item is the response shape with `mentions` (same as the vendor responses en
   }
 }
 ```
+
+### `POST /projects/:projectId/responses/reread`
+Used by: **Reread with AI** on the response page and **Reread responses with no features** on the Surveys page. Admin only.
+
+Body `{ "responseIds": ["rsp_1"] }` queues those responses (1 to 500, all in the project, else `400` / `404`). An empty body `{}` queues every response with no linked features. Returns `202 { "queued": n }`.
+
+The classifier keeps its own list of responses it has read, so it never reads one twice on its own; `analyzed` only means the response was stamped, not that features were found. Queued responses go in `response_rereads`; the classifier reads them on its next pass (about every 30 s), adds new features and mentions (existing ones stay), then deletes the row.
 
 ### `GET /projects/:projectId/responses/:responseId`
 Used by: the response page `/projects/:projectId/responses/:responseId`. It's opened from any response card's group name, or from the map's "Open response" button.

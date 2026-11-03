@@ -13,6 +13,7 @@ import type {
   FeedbackInput,
   LoginRequest,
   ProjectFilters,
+  RereadRequest,
   UserCreate,
   UserUpdate,
   VendorCreate,
@@ -165,6 +166,7 @@ const WRITE_ROUTES: [method: string, pattern: string, status: number, handler: W
     (api, p) => api.deleteFeatureFeedback(p.projectId, p.featureId, p.entryId),
   ],
   ["PUT", "projects/:projectId/weights", 200, (api, p, body) => api.updateWeights(p.projectId, body as WeightsUpdate)],
+  ["POST", "projects/:projectId/responses/reread", 202, (api, p, body) => api.rereadResponses(p.projectId, body as RereadRequest)],
 ];
 
 // The caller's demo session, from "Authorization: Bearer <token>".

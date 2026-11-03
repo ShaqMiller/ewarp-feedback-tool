@@ -942,6 +942,21 @@ export const demoApi: DemoApi = {
     };
   },
 
+  // The demo has no AI to ask, so this only checks the request and counts what would be queued.
+  async rereadResponses(projectId, body = {}) {
+    await sleep();
+    projectOr404(projectId);
+    const rs = db.responses.filter((r) => r.projectId === projectId);
+    const ids = body?.responseIds;
+    if (ids === undefined) return { queued: rs.filter((r) => !db.mentions.some((m) => m.responseId === r.id)).length };
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500 || ids.some((id) => typeof id !== "string")) {
+      throw new ApiError(400, "responseIds must have 1 to 500 response IDs.");
+    }
+    const unknown = ids.find((id) => !rs.some((r) => r.id === id));
+    if (unknown) throw new ApiError(404, `Response ${unknown} not found in project ${projectId}`);
+    return { queued: new Set(ids).size };
+  },
+
   async listSurveys(projectId) {
     await sleep();
     projectOr404(projectId);
@@ -1038,6 +1053,7 @@ const ADMIN_ONLY = new Set<string>([
   "addFeatureFeedback",
   "deleteFeatureFeedback",
   "updateWeights",
+  "rereadResponses",
 ]);
 
 export function demoApiFor(token: string | undefined): FeedbackApi {

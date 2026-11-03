@@ -8,6 +8,7 @@ import { EmptyState, Pill } from "@/components/ui/primitives";
 import { TopBar } from "@/components/shell/TopBar";
 import { ShowInMapLink } from "@/components/map/ShowInMapLink";
 import { KIND_LABEL, ResponseCard } from "@/components/responses/ResponseCard";
+import { RereadButton } from "@/components/responses/RereadButton";
 
 type Props = PageProps<"/projects/[projectId]/responses/[responseId]">;
 
@@ -17,12 +18,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: r ? `Response from ${GROUP_LABELS[r.group]}` : "Response" };
 }
 
-// Uses GET /projects/:projectId and /responses/:responseId
+// Uses GET /projects/:projectId and /responses/:responseId; admins can POST /responses/reread
 export default async function ResponsePage({ params }: Props) {
   const { projectId, responseId } = await params;
-  const [project, response] = await Promise.all([
+  const [project, response, me] = await Promise.all([
     orNotFound(api.getProject(projectId)),
     orNotFound(api.getResponse(projectId, responseId)),
+    api.getMe(),
   ]);
   const kinds = [...new Set(response.mentions.map((m) => m.kind))];
   const details = [
@@ -64,7 +66,7 @@ export default async function ResponsePage({ params }: Props) {
               {response.mentions.length === 0 ? (
                 <EmptyState title={response.analyzed ? "No features linked" : "Waiting for AI"}>
                   {response.analyzed
-                    ? "AI didn't find a specific feature in this response."
+                    ? "AI didn't find a specific feature in this response. An admin can ask it to read the response again."
                     : "Features appear here once AI has read this response."}
                 </EmptyState>
               ) : (
@@ -82,6 +84,11 @@ export default async function ResponsePage({ params }: Props) {
                     </li>
                   ))}
                 </ul>
+              )}
+              {me.role === "admin" && response.analyzed && (
+                <div className="mt-3 border-t border-line pt-3">
+                  <RereadButton projectId={projectId} responseId={response.id} label="Reread with AI" />
+                </div>
               )}
             </Card>
             <Card title="Details">

@@ -233,6 +233,7 @@ if (!project) {
       await expectStatus(`POST ${p}/vendors as viewer → 403`, () => send("POST", `${p}/vendors`, { name: "Viewer test" }, as), 403);
       await expectStatus(`POST ${p}/features as viewer → 403`, () => send("POST", `${p}/features`, { name: "Viewer test" }, as), 403);
       await expectStatus(`PUT ${p}/weights as viewer → 403`, () => send("PUT", `${p}/weights`, { groups: [{ key: "pm", weight: 1 }] }, as), 403);
+      await expectStatus(`POST ${p}/responses/reread as viewer → 403`, () => send("POST", `${p}/responses/reread`, {}, as), 403);
     }
   } else {
     console.log(color(2, "\nViewer checks skipped. Set EWARP_VIEWER_EMAIL and EWARP_VIEWER_PASSWORD to check that viewers get 403."));
@@ -338,6 +339,11 @@ async function checkWrites(p, featureId, vendorId, weights) {
     await expect("PUT", `${p}/weights`, { groups: [{ key: g.key, weight: 11 }] }, 400, "Error");
     await expect("PUT", `${p}/weights`, { features: [{ id: "__missing__", weight: 1 }] }, 400, "Error");
   }
+
+  // Only bad requests: a real one would make the backend's AI read responses again.
+  console.log("\nReread with AI (bad requests only)\n");
+  await expect("POST", `${p}/responses/reread`, { responseIds: [] }, 400, "Error");
+  await expect("POST", `${p}/responses/reread`, { responseIds: ["__missing__"] }, 404, "Error");
 
   console.log("\nUser writes (temporary user)\n");
   const email = `contract-check-${Date.now()}@example.com`;
