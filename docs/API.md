@@ -475,7 +475,7 @@ Used by: **Reread with AI** on the response page and **Reread responses with no 
 
 Body `{ "responseIds": ["rsp_1"] }` queues those responses (1 to 500, all in the project, else `400` / `404`). An empty body `{}` queues every response with no linked features. Returns `202 { "queued": n }`.
 
-The classifier keeps its own list of responses it has read, so it never reads one twice on its own; `analyzed` only means the response was stamped, not that features were found. Queued responses go in `response_rereads`; the classifier reads them on its next pass (about every 30 s), adds new features and mentions (existing ones stay), then deletes the row.
+The classifier keeps its own list of responses it has read, so it never reads one twice on its own; `analyzed` only means the response was stamped, not that features were found. Queuing stamps the response's `analysis_error` column with `reread:<time>` (no schema change); the classifier reads any response whose stamp it hasn't handled on its next pass (about every 30 s) and adds new features and mentions (existing ones stay).
 
 ### `GET /projects/:projectId/responses/:responseId`
 Used by: the response page `/projects/:projectId/responses/:responseId`. It's opened from any response card's group name, or from the map's "Open response" button.
