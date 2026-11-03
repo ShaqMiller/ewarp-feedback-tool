@@ -1,10 +1,16 @@
 openapi: 3.1.0
 info:
   title: eWARP Feedback API
-  version: 1.1.0
+  version: 1.2.0
   description: |
-    The contract between the eWARP front end and its backend. Every route is a read-only GET except
-    the three vendor write routes used by Settings → Vendors (POST, PATCH, DELETE).
+    The contract between the eWARP front end and its backend.
+
+    - Sign in with POST /auth/login and send the returned token as `Authorization: Bearer <token>`
+      on every other route. No token or an expired one is 401.
+    - Roles: `admin` can use every route; `viewer` can use every GET except /users. Any other write by a
+      viewer is 403. The routes marked "Admin only" are the writes, plus /users.
+    - Manual features (source "manual") and manual feedback entries count everywhere survey mentions do:
+      mentions, sentiment, requests, gaps, vendor feedback and scores.
 
     - The front end calls these from the server (Next.js), never from the browser.
     - Base URL is whatever FEEDBACK_API_URL is set to, e.g. https://api.example.com/api/v1.
@@ -23,13 +29,81 @@ security:
   - bearerAuth: []
 
 paths:
+  /auth/login:
+    post:
+      operationId: login
+      summary: Sign in with email and password
+      description: |
+        Used by: the login page. The only route that takes no token. Emails match ignoring case.
+        Wrong email or password is 401 with code "invalid_credentials". Rate-limit it.
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/LoginRequest" } } }
+      responses:
+        "200": { description: Signed in., content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        default: { $ref: "#/components/responses/Error" }
+
   /me:
     get:
       operationId: getMe
       summary: The signed-in user
-      description: "Used by: sidebar user badge."
+      description: "Used by: sidebar user badge, and to decide which edit buttons to show (role)."
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/CurrentUser" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /users:
+    get:
+      operationId: listUsers
+      summary: Everyone who can sign in (admin only)
+      description: "Used by: Settings → Users. Sorted by name."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/UserList" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createUser
+      summary: Add a person (admin only)
+      description: "Used by: Settings → Users → \"Add person\". Store a salted password hash, never the password. Emails are unique ignoring case (409)."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UserCreate" } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /users/{userId}:
+    parameters: [{ name: userId, in: path, required: true, schema: { $ref: "#/components/schemas/Id" } }]
+    patch:
+      operationId: updateUser
+      summary: Rename, change role or reset password (admin only)
+      description: "Used by: Settings → Users. Demoting the last admin is 409. A role change applies to the user's next request."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UserUpdate" } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteUser
+      summary: Remove a person (admin only)
+      description: "Their tokens stop working. Deleting yourself or the last admin is 409."
+      responses:
+        "204": { description: Deleted. No body. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
 
   /projects:
@@ -122,6 +196,23 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FeatureList" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createFeature
+      summary: Add a manual feature (admin only)
+      description: |
+        Used by: Features → "Add feature". Saved with source "manual" and weight 1. Names are unique per project
+        ignoring case (409), so the classifier links later survey answers with the same name to it.
+        A like or dislike in `feedback` that names a vendor also marks that vendor as offering the feature.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FeatureCreate" } } }
+      responses:
+        "201": { description: Created. Returns the feature., content: { application/json: { schema: { $ref: "#/components/schemas/Feature" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
 
   /projects/{projectId}/features/{featureId}:
     parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/featureId" }]
@@ -131,6 +222,71 @@ paths:
       description: "Used by: feature page header and \"What people said\" counts."
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Feature" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateFeature
+      summary: Rename a feature and/or set which vendors offer it (admin only)
+      description: |
+        Used by: the feature page's admin tools. Works for survey and manual features. `vendorIds` replaces the
+        full list; every ID must be a vendor in this project (else 400). Pairs taken off must stay off even if
+        old survey likes or dislikes exist (the classifier must not re-add them).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FeatureUpdate" } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { $ref: "#/components/schemas/Feature" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteFeature
+      summary: Delete a manual feature (admin only)
+      description: "Only manual features that no survey answer mentions; otherwise 409. Removes its feedback entries and offerings."
+      responses:
+        "204": { description: Deleted. No body. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features/{featureId}/feedback:
+    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/featureId" }]
+    get:
+      operationId: listFeatureFeedback
+      summary: Manual likes, dislikes and wants for a feature, newest first
+      description: "Used by: feature page \"Added by admins\"."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FeedbackEntryList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: addFeatureFeedback
+      summary: Add a manual like, dislike or want (admin only)
+      description: "A like or dislike that names a vendor also marks that vendor as offering the feature."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FeedbackInput" } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { $ref: "#/components/schemas/FeedbackEntry" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/features/{featureId}/feedback/{entryId}:
+    parameters:
+      - { $ref: "#/components/parameters/projectId" }
+      - { $ref: "#/components/parameters/featureId" }
+      - { name: entryId, in: path, required: true, schema: { $ref: "#/components/schemas/Id" } }
+    delete:
+      operationId: deleteFeatureFeedback
+      summary: Remove a manual feedback entry (admin only)
+      responses:
+        "204": { description: Deleted. No body. }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -189,13 +345,13 @@ paths:
     parameters: [{ $ref: "#/components/parameters/projectId" }]
     get:
       operationId: listVendors
-      summary: Vendors with fit and feedback numbers
-      description: "Used by: Dashboard \"Vendor fit\", Vendors page, Features page coverage dots, Responses vendor filter."
+      summary: Vendors with score, fit and feedback numbers
+      description: "Used by: Dashboard \"Vendor scores\", Vendors page, Features page coverage dots, Responses vendor filter."
       parameters:
         - name: sort
           in: query
-          description: "fit: requestsMet desc, then responseCount desc, then name. name: A-Z."
-          schema: { type: string, enum: [fit, name], default: fit }
+          description: "score: score desc, then fit. fit: requestsMet desc, then responseCount desc, then name. name: A-Z."
+          schema: { type: string, enum: [score, fit, name], default: score }
         - { $ref: "#/components/parameters/limit" }
         - { $ref: "#/components/parameters/from" }
         - { $ref: "#/components/parameters/to" }
@@ -206,7 +362,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     post:
       operationId: createVendor
-      summary: Add a vendor to the project
+      summary: Add a vendor to the project (admin only)
       description: |
         Used by: Settings → Vendors → "Add vendor". The new vendor offers no features until they are set with PATCH.
         Trim the name and collapse repeated spaces before saving. Names are unique per project, ignoring case.
@@ -216,6 +372,7 @@ paths:
       responses:
         "201": { description: Created. Returns the new vendor., content: { application/json: { schema: { $ref: "#/components/schemas/Vendor" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
@@ -232,7 +389,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     patch:
       operationId: updateVendor
-      summary: Rename a vendor and/or set the features it offers
+      summary: Rename a vendor and/or set the features it offers (admin only)
       description: |
         Used by: Settings → Vendors → "Rename" and "Features". Send only the fields that change (at least one).
         `featureIds` replaces the vendor's whole list of offered features; send [] to clear it.
@@ -243,17 +400,20 @@ paths:
       responses:
         "200": { description: Updated. Returns the vendor., content: { application/json: { schema: { $ref: "#/components/schemas/Vendor" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteVendor
-      summary: Remove a vendor
+      summary: Remove a vendor (admin only)
       description: |
         Used by: Settings → Vendors → "Delete". Removes the vendor and its offered-feature list.
         Refuse with 409 while any response is about this vendor, so feedback never loses its vendor.
+        Manual feedback about the vendor stays, with no vendor.
       responses:
         "204": { description: Deleted. No body. }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
@@ -312,6 +472,49 @@ paths:
         - { $ref: "#/components/parameters/group" }
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ResponseWithMentionsList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/weights:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: getWeights
+      summary: How much each respondent group and feature counts in vendor scores
+      description: "Used by: Settings → Weights. Every group in RespondentGroup is listed; one never set has weight 1."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Weights" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateWeights
+      summary: Set group and/or feature weights (admin only)
+      description: "Only the rows sent change. All-or-nothing: an unknown group or feature ID is 400 and nothing is saved. Returns the full weights."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/WeightsUpdate" } } }
+      responses:
+        "200": { description: Saved., content: { application/json: { schema: { $ref: "#/components/schemas/Weights" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /projects/{projectId}/scores:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    get:
+      operationId: getScores
+      summary: Vendor scores (0-100) with a per-feature breakdown, best first
+      description: |
+        Used by: the vendor page "Score" card. Scores use every response and manual entry (no filters).
+        Each like / dislike / want counts its group's weight (gw); each feature counts its own weight (fw).
+          demand(f)       = sum of gw over f's wants, project-wide
+          coverage(v)     = sum(fw * demand * offers) / sum(fw * demand); 1 when there is no demand
+          satisfaction(v) = sum(fw * gw * (likes - dislikes)) / sum(fw * gw * (likes + dislikes)) over the features v
+                            offers, counting only its own users' feedback; 0 when there is none
+          score(v)        = round(100 * (mix.coverage * coverage + mix.satisfaction * (satisfaction + 1) / 2))
+        A breakdown line's `contribution` is the points that feature adds above the neutral baseline.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/VendorScoreList" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -399,8 +602,8 @@ components:
       type: http
       scheme: bearer
       description: |
-        Optional for now. If FEEDBACK_API_TOKEN is set on the front end, every request carries
-        `Authorization: Bearer <token>`. Per-user auth is still to be decided.
+        The token from POST /auth/login. The front end keeps it in an httpOnly cookie and sends it from its
+        server on every call, so a user's role applies to every request they make.
 
   parameters:
     projectId: { name: projectId, in: path, required: true, schema: { $ref: "#/components/schemas/Id" } }
@@ -425,6 +628,12 @@ components:
       description: |
         The write clashes with existing data (code "conflict"), e.g. a duplicate vendor name or deleting a vendor
         that has responses. The UI shows `message` as-is, e.g. "A vendor named \"Prism\" already exists in this project."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unauthorized:
+      description: No token, an expired one, or (for /auth/login) a wrong email or password. The UI goes to the login page.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Signed in as a viewer, and the route is admin only (code "forbidden").
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     Error:
       description: Anything else. The UI shows a retryable error for the section that failed.
@@ -470,10 +679,60 @@ components:
         sponsor: { $ref: "#/components/schemas/Count" }
         other: { $ref: "#/components/schemas/Count" }
 
+    Role: { type: string, enum: [admin, viewer], description: "admin = can change things; viewer = read only" }
+    RespondentGroup:
+      type: string
+      enum: [pm, pd, pa, congo, acquisition, data_cell, comops, wit, sponsor, other]
+      description: |
+        The respondent's role, each with its own weight in scores. Filters still use the three broad Groups:
+        pm and sponsor map to themselves, everything else to "other".
+    FeatureSource: { type: string, enum: [survey, manual], description: "survey = found by AI in survey answers; manual = added by an admin" }
+    Weight: { type: number, minimum: 0, maximum: 10, description: "1 = normal, 2 = counts double, 0 = left out of scores" }
+
     CurrentUser:
       type: object
-      required: [id, name, role]
-      properties: { id: { $ref: "#/components/schemas/Id" }, name: { type: string }, role: { type: string } }
+      required: [id, name, email, role]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties: { email: { type: string }, password: { type: string } }
+    Session:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token: { type: string, minLength: 1 }
+        expiresAt: { $ref: "#/components/schemas/DateTime" }
+        user: { $ref: "#/components/schemas/CurrentUser" }
+    User:
+      allOf:
+        - { $ref: "#/components/schemas/CurrentUser" }
+        - type: object
+          required: [createdAt]
+          properties: { createdAt: { $ref: "#/components/schemas/DateTime" } }
+    UserList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/User" } }, total: { $ref: "#/components/schemas/Count" } }
+    UserCreate:
+      type: object
+      required: [email, name, password, role]
+      properties:
+        email: { type: string, maxLength: 200 }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        role: { $ref: "#/components/schemas/Role" }
+    UserUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        role: { $ref: "#/components/schemas/Role" }
+        password: { type: string, minLength: 8, maxLength: 128 }
 
     ProjectListItem:
       type: object
@@ -560,8 +819,11 @@ components:
 
     FeatureListItem:
       type: object
-      required: [id, name, coverage, vendorIds, mentions, sentiment]
+      required: [id, name, coverage, vendorIds, mentions, sentiment, source, weight]
+      description: mentions and sentiment count survey mentions and manual feedback together.
       properties:
+        source: { $ref: "#/components/schemas/FeatureSource" }
+        weight: { $ref: "#/components/schemas/Weight" }
         id: { $ref: "#/components/schemas/Id" }
         name: { type: string }
         coverage: { $ref: "#/components/schemas/Coverage" }
@@ -588,6 +850,114 @@ components:
         - type: object
           required: [createdAt]
           properties: { createdAt: { $ref: "#/components/schemas/DateTime" } }
+
+    FeedbackInput:
+      type: object
+      required: [kind, group]
+      properties:
+        kind: { $ref: "#/components/schemas/Sentiment" }
+        group: { $ref: "#/components/schemas/RespondentGroup" }
+        vendorId: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }], description: "The vendor it's about, or null" }
+        note: { type: string, maxLength: 1000 }
+    FeedbackEntry:
+      type: object
+      required: [id, kind, group, vendor, note, createdBy, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        kind: { $ref: "#/components/schemas/Sentiment" }
+        group: { $ref: "#/components/schemas/RespondentGroup" }
+        vendor: { oneOf: [{ $ref: "#/components/schemas/NamedRef" }, { type: "null" }] }
+        note: { type: string }
+        createdBy: { oneOf: [{ $ref: "#/components/schemas/NamedRef" }, { type: "null" }], description: "null if that user was removed" }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+    FeedbackEntryList:
+      type: object
+      required: [items, total]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/FeedbackEntry" } }, total: { $ref: "#/components/schemas/Count" } }
+    FeatureCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        vendorIds: { type: array, items: { $ref: "#/components/schemas/Id" }, description: Vendors that offer it }
+        feedback: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/FeedbackInput" } }
+    FeatureUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        vendorIds: { type: array, items: { $ref: "#/components/schemas/Id" }, description: Replaces the full list of vendors that offer it }
+
+    Weights:
+      type: object
+      required: [groups, features]
+      properties:
+        groups:
+          type: array
+          items:
+            type: object
+            required: [key, label, weight]
+            properties: { key: { $ref: "#/components/schemas/RespondentGroup" }, label: { type: string }, weight: { $ref: "#/components/schemas/Weight" } }
+        features:
+          type: array
+          items:
+            type: object
+            required: [id, name, source, weight]
+            properties:
+              id: { $ref: "#/components/schemas/Id" }
+              name: { type: string }
+              source: { $ref: "#/components/schemas/FeatureSource" }
+              weight: { $ref: "#/components/schemas/Weight" }
+    WeightsUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        groups:
+          type: array
+          items:
+            type: object
+            required: [key, weight]
+            properties: { key: { $ref: "#/components/schemas/RespondentGroup" }, weight: { $ref: "#/components/schemas/Weight" } }
+        features:
+          type: array
+          items:
+            type: object
+            required: [id, weight]
+            properties: { id: { $ref: "#/components/schemas/Id" }, weight: { $ref: "#/components/schemas/Weight" } }
+
+    VendorScore:
+      type: object
+      required: [vendor, score, coverage, satisfaction, breakdown]
+      properties:
+        vendor: { $ref: "#/components/schemas/NamedRef" }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        coverage: { type: number, minimum: 0, maximum: 1 }
+        satisfaction: { type: number, minimum: -1, maximum: 1 }
+        breakdown:
+          type: array
+          description: Features with any demand or feedback, biggest effect first
+          items:
+            type: object
+            required: [feature, weight, demand, offers, likes, dislikes, contribution]
+            properties:
+              feature: { $ref: "#/components/schemas/NamedRef" }
+              weight: { $ref: "#/components/schemas/Weight" }
+              demand: { type: number, minimum: 0, description: Group-weighted wants }
+              offers: { type: boolean }
+              likes: { type: number, minimum: 0, description: "Group-weighted likes from this vendor's users (0 if it doesn't offer it)" }
+              dislikes: { type: number, minimum: 0 }
+              contribution: { type: number, description: Points this feature adds (or takes away) }
+    VendorScoreList:
+      type: object
+      required: [items, total, mix]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/VendorScore" } }
+        total: { $ref: "#/components/schemas/Count" }
+        mix:
+          type: object
+          required: [coverage, satisfaction]
+          description: Share of the score from coverage and from satisfaction (they add up to 1)
+          properties: { coverage: { type: number }, satisfaction: { type: number } }
 
     AiSummary:
       type: object
@@ -650,8 +1020,9 @@ components:
 
     VendorListItem:
       type: object
-      required: [id, name, responseCount, requestsMet, requestsTotal, featureCount, exclusiveCount, sentiment]
+      required: [id, name, responseCount, requestsMet, requestsTotal, featureCount, exclusiveCount, sentiment, score]
       properties:
+        score: { type: integer, minimum: 0, maximum: 100, description: "Same as GET /scores" }
         id: { $ref: "#/components/schemas/Id" }
         name: { type: string }
         responseCount: { $ref: "#/components/schemas/Count" }

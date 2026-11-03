@@ -4,6 +4,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { FeatureHeader } from "@/components/features/detail/FeatureHeader";
 import { RouteTabs } from "@/components/ui/RouteTabs";
 import { ShowInMapLink } from "@/components/map/ShowInMapLink";
+import { FeatureAdmin } from "@/components/features/detail/FeatureAdmin";
 
 type Props = LayoutProps<"/projects/[projectId]/features/[featureId]">;
 
@@ -17,11 +18,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 // Uses GET /projects/:projectId, /features/:featureId and /features/:featureId/responses (for the tab count).
 export default async function FeatureLayout({ children, params }: Props) {
   const { projectId, featureId } = await params;
-  const [project, feature, responses] = await Promise.all([
+  const [project, feature, responses, me] = await Promise.all([
     orNotFound(api.getProject(projectId)),
     orNotFound(api.getFeature(projectId, featureId)),
     orNotFound(api.listFeatureResponses(projectId, featureId)),
+    api.getMe(),
   ]);
+  const vendors = me.role === "admin" ? (await api.listVendors(projectId, { sort: "name" })).items : null;
   const base = `/projects/${project.id}/features/${feature.id}`;
 
   return (
@@ -40,6 +43,14 @@ export default async function FeatureLayout({ children, params }: Props) {
             vendorCount={project.counts.vendors}
             action={<ShowInMapLink projectId={project.id} focusId={feature.id} />}
           />
+          {vendors && (
+            <FeatureAdmin
+              projectId={project.id}
+              feature={feature}
+              vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
+              surveyResponses={responses.total}
+            />
+          )}
           <RouteTabs
             base={base}
             label="Feature sections"

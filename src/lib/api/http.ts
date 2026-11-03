@@ -5,9 +5,12 @@ import type { FeedbackApi } from "./index";
 
 type Query = Record<string, string | number | undefined>;
 
-// `token`, if set, is sent as "Authorization: Bearer <token>" on every request.
-function createHttpApi(baseUrl: string, token?: string): FeedbackApi {
-  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+// Returns the API as one user: `token` (from POST /auth/login) is sent as "Authorization: Bearer <token>".
+function createHttpApi(baseUrl: string): (token?: string) => FeedbackApi {
+  return (token) => client(baseUrl, token ? { Authorization: `Bearer ${token}` } : {});
+}
+
+function client(baseUrl: string, headers: Record<string, string>): FeedbackApi {
 
   async function request<T>(method: string, path: string, init: { query?: Query; body?: unknown } = {}): Promise<T> {
     const params = new URLSearchParams();
@@ -32,9 +35,15 @@ function createHttpApi(baseUrl: string, token?: string): FeedbackApi {
   const p = (projectId: string) => `/projects/${encodeURIComponent(projectId)}`;
   const v = (projectId: string, vendorId: string) => `${p(projectId)}/vendors/${encodeURIComponent(vendorId)}`;
   const f = (projectId: string, featureId: string) => `${p(projectId)}/features/${encodeURIComponent(featureId)}`;
+  const u = (userId: string) => `/users/${encodeURIComponent(userId)}`;
 
   return {
+    login: (body) => request("POST", "/auth/login", { body }),
     getMe: () => get("/me"),
+    listUsers: () => get("/users"),
+    createUser: (body) => request("POST", "/users", { body }),
+    updateUser: (userId, body) => request("PATCH", u(userId), { body }),
+    deleteUser: (userId) => request("DELETE", u(userId)),
     listProjects: () => get("/projects"),
     getProject: (projectId) => get(p(projectId)),
     getSummary: (projectId, filters) => get(`${p(projectId)}/summary`, filters),
@@ -42,10 +51,17 @@ function createHttpApi(baseUrl: string, token?: string): FeedbackApi {
     getCoverage: (projectId) => get(`${p(projectId)}/analytics/coverage`),
     listFeatures: (projectId, query) => get(`${p(projectId)}/features`, query),
     getFeature: (projectId, featureId) => get(f(projectId, featureId)),
+    createFeature: (projectId, body) => request("POST", `${p(projectId)}/features`, { body }),
+    updateFeature: (projectId, featureId, body) => request("PATCH", f(projectId, featureId), { body }),
+    deleteFeature: (projectId, featureId) => request("DELETE", f(projectId, featureId)),
     getFeatureSummary: (projectId, featureId) => get(`${f(projectId, featureId)}/summary`),
     listFeatureResponses: (projectId, featureId, query) => get(`${f(projectId, featureId)}/responses`, query),
     listFeatureVendors: (projectId, featureId) => get(`${f(projectId, featureId)}/vendors`),
     listRelatedFeatures: (projectId, featureId, query) => get(`${f(projectId, featureId)}/related`, query),
+    listFeatureFeedback: (projectId, featureId) => get(`${f(projectId, featureId)}/feedback`),
+    addFeatureFeedback: (projectId, featureId, body) => request("POST", `${f(projectId, featureId)}/feedback`, { body }),
+    deleteFeatureFeedback: (projectId, featureId, entryId) =>
+      request("DELETE", `${f(projectId, featureId)}/feedback/${encodeURIComponent(entryId)}`),
     listVendors: (projectId, query) => get(`${p(projectId)}/vendors`, query),
     getVendor: (projectId, vendorId) => get(v(projectId, vendorId)),
     createVendor: (projectId, body) => request("POST", `${p(projectId)}/vendors`, { body }),
@@ -55,6 +71,9 @@ function createHttpApi(baseUrl: string, token?: string): FeedbackApi {
     listVendorRequests: (projectId, vendorId, filters) => get(`${v(projectId, vendorId)}/requests`, filters),
     listVendorFeatures: (projectId, vendorId, filters) => get(`${v(projectId, vendorId)}/features`, filters),
     listVendorResponses: (projectId, vendorId, query) => get(`${v(projectId, vendorId)}/responses`, query),
+    getWeights: (projectId) => get(`${p(projectId)}/weights`),
+    updateWeights: (projectId, body) => request("PUT", `${p(projectId)}/weights`, { body }),
+    getScores: (projectId) => get(`${p(projectId)}/scores`),
     listResponses: (projectId, query) => get(`${p(projectId)}/responses`, query),
     getResponse: (projectId, responseId) => get(`${p(projectId)}/responses/${encodeURIComponent(responseId)}`),
     listSurveys: (projectId) => get(`${p(projectId)}/surveys`),

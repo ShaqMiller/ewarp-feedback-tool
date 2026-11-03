@@ -33,6 +33,8 @@ export function FeatureHeader({ feature, vendorCount, action }: { feature: Featu
       <h1 className="text-[22px] font-semibold tracking-[-0.015em]">{feature.name}</h1>
       <CoveragePill offered={feature.vendorIds.length} total={vendorCount} />
       <FeedbackPill sentiment={feature.sentiment} />
+      {feature.source === "manual" && <Pill tone="accent">Added by an admin</Pill>}
+      {feature.weight !== 1 && <Pill>Weight {feature.weight}</Pill>}
       {action && <div className="ml-auto">{action}</div>}
     </div>
   );

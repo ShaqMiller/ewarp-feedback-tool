@@ -4,7 +4,7 @@ import type { FeatureView, SentimentCounts } from "@/lib/api/types";
 import { cn } from "@/lib/format";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { CoverageIndicator, SentimentBar } from "@/components/ui/feedback";
-import { EmptyState, Skeleton } from "@/components/ui/primitives";
+import { EmptyState, Pill, Skeleton } from "@/components/ui/primitives";
 import { FEATURE_VIEWS, featuresHref, type FeaturePageQuery } from "./query";
 
 const EMPTY_VIEW: Record<FeatureView, { title: string; body: string }> = {
@@ -113,6 +113,11 @@ export async function FeatureTable({ projectId, query }: { projectId: string; qu
                   >
                     {f.name}
                   </Link>
+                  {f.source === "manual" && (
+                    <span className="ml-2 inline-flex align-middle">
+                      <Pill tone="accent">Manual</Pill>
+                    </span>
+                  )}
                   <SentimentBar counts={f.sentiment} max={max} className="mt-2 max-w-40 md:hidden" />
                 </td>
                 <td className="hidden px-3 py-3 md:table-cell">

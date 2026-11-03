@@ -4,6 +4,8 @@ import {
   ConnectionsSkeleton,
   FeedbackCard,
   FeedbackSkeleton,
+  ManualFeedbackCard,
+  ManualFeedbackSkeleton,
   RelatedFeaturesCard,
   RelatedFeaturesSkeleton,
   SummaryCard,
@@ -24,6 +26,9 @@ export default async function FeatureOverviewPage({ params }: PageProps<"/projec
         </AsyncSlot>
         <AsyncSlot title="What people said" fallback={<FeedbackSkeleton />}>
           <FeedbackCard {...ids} />
+        </AsyncSlot>
+        <AsyncSlot title="Added by admins" fallback={<ManualFeedbackSkeleton />}>
+          <ManualFeedbackCard {...ids} />
         </AsyncSlot>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">

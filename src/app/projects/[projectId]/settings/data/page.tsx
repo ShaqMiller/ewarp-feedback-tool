@@ -64,8 +64,8 @@ export default async function DataSourcePage() {
       <div>
         <h2 className="text-[15px] font-semibold">Data source</h2>
         <p className="max-w-[70ch] text-[13px] text-muted">
-          Choose what this browser shows across all projects. Switching takes you to the project list, because the demo
-          and live data have different projects. Other people&apos;s view doesn&apos;t change.
+          Choose what this browser shows across all projects. Switching signs you out, because the demo and live data
+          have different accounts and projects. Other people&apos;s view doesn&apos;t change.
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">

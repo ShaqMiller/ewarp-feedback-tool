@@ -3,9 +3,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { backendHost, DATA_SOURCE_COOKIE } from "@/lib/api";
+import { clearSession } from "@/lib/auth";
 
-// Switches this browser between the live backend and the demo data, then goes to the project list:
-// the two sources have different projects, so the current page may not exist in the other one.
+// Switches this browser between the live backend and the demo data, then signs out: the two sources
+// have different accounts and projects, so the session and the current page don't carry over.
 export async function setDataSourceAction(formData: FormData) {
   const choice = formData.get("source");
   if (choice !== "live" && choice !== "demo") return;
@@ -18,5 +19,6 @@ export async function setDataSourceAction(formData: FormData) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
   });
-  redirect("/projects");
+  await clearSession();
+  redirect("/login");
 }

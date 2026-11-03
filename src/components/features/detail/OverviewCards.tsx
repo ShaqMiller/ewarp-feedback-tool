@@ -8,6 +8,7 @@ import { AiSummaryCard, SentimentTiles } from "@/components/ui/insights";
 import { EmptyState, Pill, Skeleton } from "@/components/ui/primitives";
 import { Quote } from "@/components/responses/Quote";
 import { KIND_FIELD, KIND_LABEL } from "@/components/responses/ResponseCard";
+import { ManualFeedback } from "./ManualFeedback";
 
 type Props = { projectId: string; featureId: string };
 
@@ -46,7 +47,7 @@ export async function FeedbackCard({ projectId, featureId }: Props) {
         <SentimentTiles counts={feature.sentiment} />
       </div>
       {quotes.length === 0 ? (
-        <EmptyState title="No responses mention this yet" />
+        <EmptyState title="No survey responses mention this yet" />
       ) : (
         <ul className="grid gap-3.5">
           {quotes.map(({ r, kind, text }) => (
@@ -66,6 +67,27 @@ export async function FeedbackCard({ projectId, featureId }: Props) {
 }
 
 export const FeedbackSkeleton = () => <CardSkeleton title="What people said" lines={5} />;
+
+// ---- Manual feedback: GET /features/:featureId/feedback ----
+
+export async function ManualFeedbackCard({ projectId, featureId }: Props) {
+  const [{ items, total }, me] = await Promise.all([api.listFeatureFeedback(projectId, featureId), api.getMe()]);
+  const admin = me.role === "admin";
+  const vendors = admin ? (await api.listVendors(projectId, { sort: "name" })).items : [];
+  return (
+    <Card title="Added by admins" action={<CardMeta>{plural(total, "entry", "entries")}</CardMeta>}>
+      <ManualFeedback
+        projectId={projectId}
+        featureId={featureId}
+        entries={items}
+        vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
+        admin={admin}
+      />
+    </Card>
+  );
+}
+
+export const ManualFeedbackSkeleton = () => <CardSkeleton title="Added by admins" lines={2} />;
 
 // ---- Vendor coverage: GET /features/:featureId/vendors ----
 

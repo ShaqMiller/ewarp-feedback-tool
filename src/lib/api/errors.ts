@@ -13,4 +13,10 @@ export class ApiError extends Error {
 export const isNotFound = (err: unknown) => err instanceof ApiError && err.status === 404;
 
 // The error codes in the contract, by status.
-export const ERROR_CODES: Record<number, string> = { 400: "bad_request", 404: "not_found", 409: "conflict" };
+export const ERROR_CODES: Record<number, string> = {
+  400: "bad_request",
+  401: "unauthorized",
+  403: "forbidden",
+  404: "not_found",
+  409: "conflict",
+};

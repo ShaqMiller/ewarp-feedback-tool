@@ -1,26 +1,12 @@
 "use server";
 
-// Vendor writes for Settings → Vendors. They run on the server, so the backend URL and token stay private,
-// then refresh() re-renders the current page with fresh data (sidebar counts included).
+// Vendor writes for Settings → Vendors. They run on the server, so the backend URL and token stay private.
+// Admins only: runAdminWrite checks the role before calling the API (which checks again).
 
-import { refresh } from "next/cache";
 import { api } from "@/lib/api";
-import { ApiError } from "@/lib/api/errors";
+import { runAdminWrite as run, type ActionResult } from "@/lib/actions";
 
-export type ActionResult = { ok: true; message: string } | { ok: false; error: string } | null;
-
-async function run(write: () => Promise<unknown>, success: string): Promise<ActionResult> {
-  try {
-    await write();
-  } catch (err) {
-    // 4xx messages are written for people (e.g. "A vendor named Prism already exists in this project.").
-    if (err instanceof ApiError && err.status < 500) return { ok: false, error: err.message };
-    console.error(err);
-    return { ok: false, error: "That didn't save. Check your connection and try again." };
-  }
-  refresh();
-  return { ok: true, message: success };
-}
+export type { ActionResult };
 
 const nameFrom = (formData: FormData) => String(formData.get("name") ?? "").trim();
 

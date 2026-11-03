@@ -53,7 +53,7 @@ export default async function DashboardPage({ params }: PageProps<"/projects/[pr
           <AsyncSlot title="Most discussed features" fallback={<TopFeaturesSkeleton />}>
             <TopFeaturesCard projectId={projectId} />
           </AsyncSlot>
-          <AsyncSlot title="Vendor fit" fallback={<VendorFitSkeleton />}>
+          <AsyncSlot title="Vendor scores" fallback={<VendorFitSkeleton />}>
             <VendorFitCard projectId={projectId} />
           </AsyncSlot>
           <div className="md:col-span-2 lg:col-span-1">

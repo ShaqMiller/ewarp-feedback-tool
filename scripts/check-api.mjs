@@ -3,10 +3,12 @@
 //   npm run check:api                                   -> the reference API (needs `npm run dev`)
 //   npm run check:api -- https://api.example.com/api/v1  -> your backend
 //   npm run check:api -- <url> --project prj_1           -> check a specific project
-//   npm run check:api -- <url> --writes                  -> also check the vendor write routes, using a
-//                                                          temporary "Contract check" vendor it deletes after
+//   npm run check:api -- <url> --writes                  -> also check the write routes, using a temporary
+//                                                          vendor, feature and user it deletes after
 //
-// Set FEEDBACK_API_TOKEN to send "Authorization: Bearer <token>".
+// It signs in first with POST /auth/login, as the admin in EWARP_EMAIL / EWARP_PASSWORD. Against the local
+// reference API it uses the demo admin when those aren't set. Set EWARP_VIEWER_EMAIL / EWARP_VIEWER_PASSWORD
+// too, to check that a viewer gets 403 on writes.
 // It calls every route, validates each response body against its schema, checks that missing
 // IDs return 404 with the error shape, and exits non-zero if anything fails.
 
@@ -22,7 +24,13 @@ const flag = (name) => {
   return i === -1 ? undefined : args[i + 1];
 };
 const base = (args.find((a) => !a.startsWith("--") && a !== flag("--project")) ?? "http://localhost:3000/api/v1").replace(/\/$/, "");
-const token = process.env.FEEDBACK_API_TOKEN;
+const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(`${base}/`);
+const admin = {
+  email: process.env.EWARP_EMAIL ?? (local ? "admin@demo.test" : undefined),
+  password: process.env.EWARP_PASSWORD ?? (local ? (process.env.DEMO_PASSWORD ?? "ewarp-demo") : undefined),
+};
+const viewer = { email: process.env.EWARP_VIEWER_EMAIL, password: process.env.EWARP_VIEWER_PASSWORD };
+let token; // the admin's, set after signing in
 
 const spec = parse(readFileSync(fileURLToPath(new URL("../docs/openapi.yaml", import.meta.url)), "utf8"));
 const ajv = new Ajv2020({ strict: false, allErrors: true });
@@ -33,8 +41,8 @@ const validator = (name) => ajv.getSchema(`openapi#/components/schemas/${name}`)
 const results = [];
 const color = (code, s) => (process.stdout.isTTY ? `\x1b[${code}m${s}\x1b[0m` : s);
 
-async function call(path) {
-  const res = await fetch(`${base}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+async function call(path, as = token) {
+  const res = await fetch(`${base}${path}`, { headers: as ? { Authorization: `Bearer ${as}` } : {} });
   let body = null;
   try {
     body = await res.json();
@@ -87,7 +95,42 @@ const atMost = (n) => (body) => (body.items.length > n ? [`returned ${body.items
 
 console.log(`Checking ${base}\n`);
 
-await check("/me", "CurrentUser");
+if (!admin.email || !admin.password) {
+  console.log(color(31, "Set EWARP_EMAIL and EWARP_PASSWORD to an admin account so the check can sign in."));
+  process.exit(1);
+}
+
+// Sign in as the admin; every later call sends the token.
+async function login(who, label) {
+  const res = await send("POST", "/auth/login", { email: who.email, password: who.password }, null);
+  const validate = validator("Session");
+  const problems = res.status !== 200 ? [`expected 200, got ${res.status}${res.body?.error?.message ? `: ${res.body.error.message}` : ""}`] : validate(res.body) ? [] : validate.errors.slice(0, 8).map((e) => `Session${e.instancePath || ""} ${e.message}`);
+  record(`POST /auth/login (${label})`, problems);
+  return problems.length ? null : res.body;
+}
+const session = await login(admin, admin.email);
+if (!session) {
+  console.log(color(31, "\nCouldn't sign in, so nothing else can be checked."));
+  process.exit(1);
+}
+token = session.token;
+if (session.user.role !== "admin") record("signed-in user is an admin", [`${admin.email} has role ${session.user.role}; use an admin account`]);
+
+async function expectStatus(label, request, status) {
+  try {
+    const res = await request();
+    const problems = res.status === status ? [] : [`expected ${status}, got ${res.status}`];
+    if (!validator("Error")(res.body)) problems.push('body must be { "error": { "code", "message" } }');
+    record(label, problems);
+  } catch (err) {
+    record(label, [`request failed: ${err.message}`]);
+  }
+}
+await expectStatus("POST /auth/login with a wrong password → 401", () => send("POST", "/auth/login", { email: admin.email, password: "wrong password" }, null), 401);
+await expectStatus("GET /projects without a token → 401", () => call("/projects", null), 401);
+
+await check("/me", "CurrentUser", (me) => (me.id === session.user.id ? [] : ["/me should be the user who signed in"]));
+await check("/users", "UserList");
 const projects = await check("/projects", "ProjectList");
 const project =
   projects?.items.find((p) => p.id === flag("--project")) ??
@@ -114,6 +157,19 @@ if (!project) {
   );
   const vendors = await check(`${p}/vendors?sort=fit`, "VendorList");
   await check(`${p}/vendors?sort=name`, "VendorList");
+  await check(`${p}/vendors`, "VendorList", (b) =>
+    b.items.every((v, i) => i === 0 || b.items[i - 1].score >= v.score) ? [] : ["the default sort should be score, highest first"],
+  );
+  const weights = await check(`${p}/weights`, "Weights");
+  await check(`${p}/scores`, "VendorScoreList", (b) => {
+    const problems = [];
+    if (Math.abs(b.mix.coverage + b.mix.satisfaction - 1) > 1e-9) problems.push("mix.coverage + mix.satisfaction must be 1");
+    for (const v of b.items) {
+      const expected = Math.round(100 * (b.mix.coverage * v.coverage + (b.mix.satisfaction * (v.satisfaction + 1)) / 2));
+      if (Math.abs(expected - v.score) > 1) problems.push(`${v.vendor.name}: score ${v.score} doesn't match coverage and satisfaction (${expected})`);
+    }
+    return problems;
+  });
   const responses = await check(`${p}/responses?limit=10&offset=0`, "ResponseList", atMost(10));
   await check(`${p}/responses?status=pending&sort=oldest&q=a`, "ResponseList", (b) =>
     b.items.every((r) => !r.analyzed) ? [] : ["status=pending returned analyzed responses"],
@@ -134,6 +190,7 @@ if (!project) {
     );
     await check(`${f}/vendors`, "FeatureVendorList");
     await check(`${f}/related?limit=8`, "RelatedFeatureList", atMost(8));
+    await check(`${f}/feedback`, "FeedbackEntryList");
   } else {
     console.log(color(33, "\nNo features in this project; skipped the feature routes."));
   }
@@ -165,15 +222,32 @@ if (!project) {
   await expect404(`${p}/vendors/__missing__`);
   await expect404(`${p}/responses/__missing__`);
 
-  if (args.includes("--writes")) {
-    await checkWrites(p, featureId);
+  if (viewer.email && viewer.password) {
+    console.log("\nViewer (read only)\n");
+    const viewerSession = await login(viewer, viewer.email);
+    if (viewerSession) {
+      const as = viewerSession.token;
+      const read = await call(p, as);
+      record(`GET ${p} as viewer → 200`, read.status === 200 ? [] : [`expected 200, got ${read.status}`]);
+      await expectStatus("GET /users as viewer → 403", () => call("/users", as), 403);
+      await expectStatus(`POST ${p}/vendors as viewer → 403`, () => send("POST", `${p}/vendors`, { name: "Viewer test" }, as), 403);
+      await expectStatus(`POST ${p}/features as viewer → 403`, () => send("POST", `${p}/features`, { name: "Viewer test" }, as), 403);
+      await expectStatus(`PUT ${p}/weights as viewer → 403`, () => send("PUT", `${p}/weights`, { groups: [{ key: "pm", weight: 1 }] }, as), 403);
+    }
   } else {
-    console.log(color(2, "\nVendor write routes not checked. Add --writes to create, edit and delete a temporary test vendor."));
+    console.log(color(2, "\nViewer checks skipped. Set EWARP_VIEWER_EMAIL and EWARP_VIEWER_PASSWORD to check that viewers get 403."));
+  }
+
+  if (args.includes("--writes")) {
+    await checkWrites(p, featureId, vendors?.items[0]?.id, weights);
+  } else {
+    console.log(color(2, "\nWrite routes not checked. Add --writes to create, edit and delete a temporary vendor, feature and user."));
   }
 }
 
-// Opt-in: creates a vendor named "Contract check <time>", edits it, then deletes it. Existing vendors are never touched.
-async function checkWrites(p, featureId) {
+// Opt-in: creates a vendor, a manual feature and a user named "Contract check <time>", edits them, then deletes them.
+// Existing data is only touched to write a weight back with the value it already has.
+async function checkWrites(p, featureId, vendorId, weights) {
   console.log("\nVendor writes (temporary test vendor)\n");
 
   async function expect(method, path, body, status, schema, extra = () => []) {
@@ -222,10 +296,64 @@ async function checkWrites(p, featureId) {
   await expect("PATCH", v, {}, 400, "Error");
   await expect("DELETE", v, undefined, 204);
   await expect404(v);
+
+  console.log("\nFeature writes (temporary manual feature)\n");
+  const featureName = `Contract check ${new Date().toISOString().slice(0, 19)}`;
+  const feature = await expect(
+    "POST",
+    `${p}/features`,
+    {
+      name: featureName,
+      vendorIds: vendorId ? [vendorId] : [],
+      feedback: [{ kind: "want", group: "sponsor", vendorId: null, note: "Contract check" }],
+    },
+    201,
+    "Feature",
+    (f) => {
+      const problems = [];
+      if (f.source !== "manual") problems.push('source should be "manual"');
+      if (f.sentiment.want !== 1) problems.push("the want sent in feedback should be counted");
+      if (vendorId && !f.vendorIds.includes(vendorId)) problems.push("vendorIds should include the vendor sent");
+      return problems;
+    },
+  );
+  if (feature) {
+    const f = `${p}/features/${encodeURIComponent(feature.id)}`;
+    await expect("POST", `${p}/features`, { name: featureName.toLowerCase() }, 409, "Error");
+    await expect("POST", `${p}/features`, { name: "x", feedback: [{ kind: "meh", group: "pm" }] }, 400, "Error");
+    await expect("PATCH", f, { name: `${featureName} (renamed)`, vendorIds: [] }, 200, "Feature", (b) =>
+      b.name === `${featureName} (renamed)` && b.vendorIds.length === 0 ? [] : ["name and vendorIds should be exactly what was sent"],
+    );
+    const entry = await expect("POST", `${f}/feedback`, { kind: "dislike", group: "pd", vendorId: vendorId ?? null, note: "Contract check" }, 201, "FeedbackEntry");
+    await check(`${f}/feedback`, "FeedbackEntryList", (b) => (b.total === 2 ? [] : [`expected 2 entries, got ${b.total}`]));
+    if (entry) await expect("DELETE", `${f}/feedback/${encodeURIComponent(entry.id)}`, undefined, 204);
+    await expect("DELETE", f, undefined, 204);
+    await expect404(f);
+  }
+
+  if (weights?.groups.length) {
+    console.log("\nWeights (writes back the current value)\n");
+    const g = weights.groups[0];
+    await expect("PUT", `${p}/weights`, { groups: [{ key: g.key, weight: g.weight }] }, 200, "Weights");
+    await expect("PUT", `${p}/weights`, { groups: [{ key: g.key, weight: 11 }] }, 400, "Error");
+    await expect("PUT", `${p}/weights`, { features: [{ id: "__missing__", weight: 1 }] }, 400, "Error");
+  }
+
+  console.log("\nUser writes (temporary user)\n");
+  const email = `contract-check-${Date.now()}@example.com`;
+  const user = await expect("POST", "/users", { email, name: "Contract check", password: "contract-check-1", role: "viewer" }, 201, "User");
+  if (user) {
+    const u = `/users/${encodeURIComponent(user.id)}`;
+    await expect("POST", "/users", { email, name: "Again", password: "contract-check-1", role: "viewer" }, 409, "Error");
+    await expect("PATCH", u, { role: "admin" }, 200, "User", (b) => (b.role === "admin" ? [] : ["role was not updated"]));
+    await expect("PATCH", u, { password: "short" }, 400, "Error");
+    await expect("DELETE", u, undefined, 204);
+  }
+  await expect("DELETE", `/users/${encodeURIComponent(session.user.id)}`, undefined, 409, "Error");
 }
 
-async function send(method, path, body) {
-  const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) };
+async function send(method, path, body, as = token) {
+  const headers = { ...(as ? { Authorization: `Bearer ${as}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) };
   const res = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   let parsed = null;
   if (res.status !== 204) {

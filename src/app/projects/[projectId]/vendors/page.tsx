@@ -11,8 +11,10 @@ export const metadata: Metadata = { title: "Vendors" };
 
 export default async function VendorsPage({ params }: PageProps<"/projects/[projectId]/vendors">) {
   const { projectId } = await params;
-  const project = await orNotFound(api.getProject(projectId));
+  const [project, me] = await Promise.all([orNotFound(api.getProject(projectId)), api.getMe()]);
   const { vendors, features } = project.counts;
+  const linkClass =
+    "inline-flex h-[32px] items-center gap-1.5 rounded-[7px] border border-line bg-surface px-3 text-[12.5px] font-medium transition-colors hover:bg-chip";
 
   return (
     <>
@@ -23,17 +25,21 @@ export default async function VendorsPage({ params }: PageProps<"/projects/[proj
             <h1 className="text-[22px] font-semibold tracking-[-0.015em]">Vendors</h1>
             <p className="text-[13px] text-muted">
               {vendors > 0
-                ? `${plural(vendors, "vendor")}, ranked by how many requested features they offer`
+                ? `${plural(vendors, "vendor")}, ranked by score: requested features they offer and what their users say`
                 : "No vendors in this project yet"}
             </p>
           </div>
-          <Link
-            href={`/projects/${project.id}/settings/vendors`}
-            className="inline-flex h-[32px] items-center gap-1.5 rounded-[7px] border border-line bg-surface px-3 text-[12.5px] font-medium transition-colors hover:bg-chip"
-          >
-            <GearIcon className="size-3.5 text-muted" />
-            Manage vendors
-          </Link>
+          {me.role === "admin" && (
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/projects/${project.id}/settings/weights`} className={linkClass}>
+                Scoring weights
+              </Link>
+              <Link href={`/projects/${project.id}/settings/vendors`} className={linkClass}>
+                <GearIcon className="size-3.5 text-muted" />
+                Manage vendors
+              </Link>
+            </div>
+          )}
         </div>
         <AsyncSlot title="Vendors" fallback={<VendorTableSkeleton />}>
           <VendorTable projectId={projectId} featureCount={features} />

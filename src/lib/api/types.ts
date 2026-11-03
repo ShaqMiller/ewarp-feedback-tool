@@ -26,12 +26,54 @@ export type List<T> = {
   total: number; // total matches before `limit`
 };
 
-// GET /me
+// admin = can change things (Settings, vendors, features, weights); viewer = read only.
+export type Role = "admin" | "viewer";
+
+// GET /me: the signed-in user.
 export type CurrentUser = {
   id: Id;
   name: string;
-  role: string;
+  email: string;
+  role: Role;
 };
+
+// POST /auth/login (body). Every other route needs the returned token as "Authorization: Bearer <token>".
+export type LoginRequest = { email: string; password: string };
+
+// POST /auth/login
+export type Session = {
+  token: string;
+  expiresAt: string;
+  user: CurrentUser;
+};
+
+// GET /users (admin)
+export type User = CurrentUser & { createdAt: string };
+
+// POST /users (admin, body)
+export type UserCreate = { email: string; name: string; password: string; role: Role };
+
+// PATCH /users/:userId (admin, body). Send only what changes.
+export type UserUpdate = { name?: string; role?: Role; password?: string };
+
+// The respondent groups surveys record (a person's role), each with its own weight in vendor scores.
+// Filters and charts still use the three broad Groups above; pm and sponsor are the same in both.
+export type RespondentGroup = "pm" | "pd" | "pa" | "congo" | "acquisition" | "data_cell" | "comops" | "wit" | "sponsor" | "other";
+
+export const RESPONDENT_GROUP_LABELS: Record<RespondentGroup, string> = {
+  pm: "Project Manager",
+  pd: "Portfolio Director",
+  pa: "Portfolio Analyst",
+  congo: "Congressional",
+  acquisition: "Acquisition",
+  data_cell: "Data Cell",
+  comops: "ComOps",
+  wit: "Warfighter",
+  sponsor: "Sponsor's team",
+  other: "Other",
+};
+
+export const RESPONDENT_GROUPS = Object.keys(RESPONDENT_GROUP_LABELS) as RespondentGroup[];
 
 // GET /projects
 export type ProjectListItem = {
@@ -88,7 +130,11 @@ export type ResponsesByWeek = {
 // GET /projects/:projectId/analytics/coverage
 export type CoverageBreakdown = Record<Coverage, number> & { total: number };
 
+// survey = found in survey answers by AI; manual = added by an admin.
+export type FeatureSource = "survey" | "manual";
+
 // GET /projects/:projectId/features
+// mentions and sentiment count survey answers and manual feedback together.
 export type FeatureListItem = {
   id: Id;
   name: string;
@@ -96,6 +142,8 @@ export type FeatureListItem = {
   vendorIds: Id[]; // vendors that offer it
   mentions: number;
   sentiment: SentimentCounts;
+  source: FeatureSource;
+  weight: number; // how much it counts in vendor scores, 0-10 (default 1)
 };
 
 export type FeatureSort = "mentions" | "newest" | "name";
@@ -111,6 +159,26 @@ export type FeatureList = List<FeatureListItem> & {
 
 // GET /projects/:projectId/features/:featureId
 export type Feature = FeatureListItem & {
+  createdAt: string;
+};
+
+// One manual like / dislike / want, as sent in a create or add request.
+export type FeedbackInput = { kind: Sentiment; group: RespondentGroup; vendorId?: Id | null; note?: string };
+
+// POST /projects/:projectId/features (admin, body). Adds a manual feature.
+export type FeatureCreate = { name: string; vendorIds?: Id[]; feedback?: FeedbackInput[] };
+
+// PATCH /projects/:projectId/features/:featureId (admin, body). vendorIds replaces the vendors that offer it.
+export type FeatureUpdate = { name?: string; vendorIds?: Id[] };
+
+// GET /projects/:projectId/features/:featureId/feedback: manual likes / dislikes / wants, newest first.
+export type FeedbackEntry = {
+  id: Id;
+  kind: Sentiment;
+  group: RespondentGroup;
+  vendor: { id: Id; name: string } | null;
+  note: string;
+  createdBy: { id: Id; name: string } | null;
   createdAt: string;
 };
 
@@ -165,9 +233,10 @@ export type VendorListItem = {
   featureCount: number; // features it offers
   exclusiveCount: number; // of those, features no other vendor offers
   sentiment: SentimentCounts; // feedback from its own users
+  score: number; // 0-100, see VendorScore
 };
 
-export type VendorSort = "fit" | "name";
+export type VendorSort = "score" | "fit" | "name";
 
 // GET /projects/:projectId/vendors/:vendorId
 export type Vendor = VendorListItem & {
@@ -180,6 +249,42 @@ export type VendorCreate = { name: string };
 // PATCH /projects/:projectId/vendors/:vendorId (body). Send only what changes.
 // featureIds replaces the full list of features the vendor offers.
 export type VendorUpdate = { name?: string; featureIds?: Id[] };
+
+// GET /projects/:projectId/weights
+export type Weights = {
+  groups: { key: RespondentGroup; label: string; weight: number }[];
+  features: { id: Id; name: string; source: FeatureSource; weight: number }[];
+};
+
+// PUT /projects/:projectId/weights (admin, body). Only the rows sent change. Weights are 0-10.
+export type WeightsUpdate = {
+  groups?: { key: RespondentGroup; weight: number }[];
+  features?: { id: Id; weight: number }[];
+};
+
+// GET /projects/:projectId/scores: vendors ranked by score.
+// Each like / dislike / want counts its group's weight; each feature counts its own weight.
+//   demand(f) = weighted wants for f;  coverage = share of weighted demand the vendor offers (0-1)
+//   satisfaction = (likes - dislikes) / (likes + dislikes) over its own feedback on features it offers (-1..1)
+//   score = round(100 * (mix.coverage * coverage + mix.satisfaction * (satisfaction + 1) / 2))
+export type VendorScore = {
+  vendor: { id: Id; name: string };
+  score: number;
+  coverage: number;
+  satisfaction: number;
+  // Points each feature adds to the score; biggest effect first.
+  breakdown: {
+    feature: { id: Id; name: string };
+    weight: number;
+    demand: number;
+    offers: boolean;
+    likes: number;
+    dislikes: number;
+    contribution: number;
+  }[];
+};
+
+export type VendorScoreList = List<VendorScore> & { mix: { coverage: number; satisfaction: number } };
 
 // GET /projects/:projectId/vendors/:vendorId/requests
 // Every requested feature in the project, and whether this vendor offers it.

@@ -84,6 +84,7 @@ export const SearchIcon = icon(
   </>,
 );
 export const XIcon = icon(<path d="M7 7l10 10M17 7L7 17" />);
+export const LogOutIcon = icon(<path d="M14 4.5h4A1.5 1.5 0 0119.5 6v12a1.5 1.5 0 01-1.5 1.5h-4M10 16l-4-4 4-4M6 12h9" />);
 export const MoreIcon = icon(
   <>
     <circle cx="6" cy="12" r="1.2" />

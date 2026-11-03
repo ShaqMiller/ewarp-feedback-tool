@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. With no backend configured, the app runs on demo data (`src/lib/api/demo`).
+Open http://localhost:3000 and sign in. With no backend configured, the app runs on demo data (`src/lib/api/demo`): use the **Demo admin** or **Demo viewer** button on the login page. Admins can change vendors, features, weights and users; viewers can only look.
 
 ## Backend team
 
@@ -17,8 +17,8 @@ Start with **[docs/API.md](docs/API.md)**. In short:
 
 - **Contract:** [`docs/openapi.yaml`](docs/openapi.yaml) lists every route, request and response schema.
 - **Live examples:** while `npm run dev` is running, `http://localhost:3000/api/v1/...` serves the demo data at the real paths.
-- **Check your server:** `npm run check:api -- https://your-api/api/v1` (add `--writes` to also test the vendor write routes).
-- **Switch the UI to your API:** set `FEEDBACK_API_URL` (and optionally `FEEDBACK_API_TOKEN`) in `.env.local` or in Vercel. See [`.env.example`](.env.example).
+- **Check your server:** `EWARP_EMAIL=… EWARP_PASSWORD=… npm run check:api -- https://your-api/api/v1` with an admin account (add `--writes` to also test the write routes).
+- **Switch the UI to your API:** set `FEEDBACK_API_URL` in `.env.local` or in Vercel. People then sign in with their backend accounts. See [`.env.example`](.env.example).
 
 ## Where things are
 

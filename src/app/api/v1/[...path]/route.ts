@@ -1,17 +1,29 @@
 // Reference API: serves the demo data at the exact paths in docs/openapi.yaml, so the backend team
 // can call any route (e.g. GET /api/v1/projects/prj_1/summary) and see the response the UI expects.
-// Also accepts the vendor write routes (POST / PATCH / DELETE). Turned off once FEEDBACK_API_URL
-// points the app at the real backend.
+// Sign in first with POST /api/v1/auth/login, then send "Authorization: Bearer <token>" on every call;
+// viewers get 403 on the write routes. Turned off once FEEDBACK_API_URL points the app at the real backend.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { demoApi } from "@/lib/api/demo/handlers";
+import type { FeedbackApi } from "@/lib/api";
+import { demoApiFor } from "@/lib/api/demo/handlers";
 import { ApiError, ERROR_CODES } from "@/lib/api/errors";
-import type { ProjectFilters, VendorCreate, VendorUpdate } from "@/lib/api/types";
+import type {
+  FeatureCreate,
+  FeatureUpdate,
+  FeedbackInput,
+  LoginRequest,
+  ProjectFilters,
+  UserCreate,
+  UserUpdate,
+  VendorCreate,
+  VendorUpdate,
+  WeightsUpdate,
+} from "@/lib/api/types";
 
 class BadRequest extends Error {}
 
 type Params = Record<string, string>;
-type Handler = (params: Params, q: Query) => Promise<unknown>;
+type Handler = (api: FeedbackApi, params: Params, q: Query) => Promise<unknown>;
 
 // Typed readers for query params. Invalid values are a 400, like the real API should do.
 class Query {
@@ -50,19 +62,20 @@ const SENTIMENTS = ["like", "dislike", "want"] as const;
 
 // One entry per route in docs/openapi.yaml.
 const ROUTES: [string, Handler][] = [
-  ["me", () => demoApi.getMe()],
-  ["projects", () => demoApi.listProjects()],
-  ["projects/:projectId", (p) => demoApi.getProject(p.projectId)],
-  ["projects/:projectId/summary", (p, q) => demoApi.getSummary(p.projectId, q.filters())],
+  ["me", (api) => api.getMe()],
+  ["users", (api) => api.listUsers()],
+  ["projects", (api) => api.listProjects()],
+  ["projects/:projectId", (api, p) => api.getProject(p.projectId)],
+  ["projects/:projectId/summary", (api, p, q) => api.getSummary(p.projectId, q.filters())],
   [
     "projects/:projectId/analytics/responses-by-week",
-    (p, q) => demoApi.getResponsesByWeek(p.projectId, { weeks: q.int("weeks", 1, 52), ...q.filters() }),
+    (api, p, q) => api.getResponsesByWeek(p.projectId, { weeks: q.int("weeks", 1, 52), ...q.filters() }),
   ],
-  ["projects/:projectId/analytics/coverage", (p) => demoApi.getCoverage(p.projectId)],
+  ["projects/:projectId/analytics/coverage", (api, p) => api.getCoverage(p.projectId)],
   [
     "projects/:projectId/features",
-    (p, q) =>
-      demoApi.listFeatures(p.projectId, {
+    (api, p, q) =>
+      api.listFeatures(p.projectId, {
         view: q.oneOf("view", ["all", "requested", "gap", "pain"] as const),
         q: q.str("q"),
         sort: q.oneOf("sort", ["mentions", "newest", "name"] as const),
@@ -70,43 +83,44 @@ const ROUTES: [string, Handler][] = [
         ...q.filters(),
       }),
   ],
-  ["projects/:projectId/features/:featureId", (p) => demoApi.getFeature(p.projectId, p.featureId)],
-  ["projects/:projectId/features/:featureId/summary", (p) => demoApi.getFeatureSummary(p.projectId, p.featureId)],
+  ["projects/:projectId/features/:featureId", (api, p) => api.getFeature(p.projectId, p.featureId)],
+  ["projects/:projectId/features/:featureId/summary", (api, p) => api.getFeatureSummary(p.projectId, p.featureId)],
   [
     "projects/:projectId/features/:featureId/responses",
-    (p, q) =>
-      demoApi.listFeatureResponses(p.projectId, p.featureId, {
+    (api, p, q) =>
+      api.listFeatureResponses(p.projectId, p.featureId, {
         kind: q.oneOf("kind", SENTIMENTS),
         limit: q.int("limit", 1, 500),
         ...q.filters(),
       }),
   ],
-  ["projects/:projectId/features/:featureId/vendors", (p) => demoApi.listFeatureVendors(p.projectId, p.featureId)],
+  ["projects/:projectId/features/:featureId/feedback", (api, p) => api.listFeatureFeedback(p.projectId, p.featureId)],
+  ["projects/:projectId/features/:featureId/vendors", (api, p) => api.listFeatureVendors(p.projectId, p.featureId)],
   [
     "projects/:projectId/features/:featureId/related",
-    (p, q) => demoApi.listRelatedFeatures(p.projectId, p.featureId, { limit: q.int("limit", 1, 500) }),
+    (api, p, q) => api.listRelatedFeatures(p.projectId, p.featureId, { limit: q.int("limit", 1, 500) }),
   ],
   [
     "projects/:projectId/vendors",
-    (p, q) =>
-      demoApi.listVendors(p.projectId, {
-        sort: q.oneOf("sort", ["fit", "name"] as const),
+    (api, p, q) =>
+      api.listVendors(p.projectId, {
+        sort: q.oneOf("sort", ["score", "fit", "name"] as const),
         limit: q.int("limit", 1, 500),
         ...q.filters(),
       }),
   ],
-  ["projects/:projectId/vendors/:vendorId", (p) => demoApi.getVendor(p.projectId, p.vendorId)],
-  ["projects/:projectId/vendors/:vendorId/summary", (p) => demoApi.getVendorSummary(p.projectId, p.vendorId)],
-  ["projects/:projectId/vendors/:vendorId/requests", (p, q) => demoApi.listVendorRequests(p.projectId, p.vendorId, q.filters())],
-  ["projects/:projectId/vendors/:vendorId/features", (p, q) => demoApi.listVendorFeatures(p.projectId, p.vendorId, q.filters())],
+  ["projects/:projectId/vendors/:vendorId", (api, p) => api.getVendor(p.projectId, p.vendorId)],
+  ["projects/:projectId/vendors/:vendorId/summary", (api, p) => api.getVendorSummary(p.projectId, p.vendorId)],
+  ["projects/:projectId/vendors/:vendorId/requests", (api, p, q) => api.listVendorRequests(p.projectId, p.vendorId, q.filters())],
+  ["projects/:projectId/vendors/:vendorId/features", (api, p, q) => api.listVendorFeatures(p.projectId, p.vendorId, q.filters())],
   [
     "projects/:projectId/vendors/:vendorId/responses",
-    (p, q) => demoApi.listVendorResponses(p.projectId, p.vendorId, { limit: q.int("limit", 1, 500), ...q.filters() }),
+    (api, p, q) => api.listVendorResponses(p.projectId, p.vendorId, { limit: q.int("limit", 1, 500), ...q.filters() }),
   ],
   [
     "projects/:projectId/responses",
-    (p, q) =>
-      demoApi.listResponses(p.projectId, {
+    (api, p, q) =>
+      api.listResponses(p.projectId, {
         vendorId: q.str("vendorId"),
         surveyId: q.str("surveyId"),
         status: q.oneOf("status", ["analyzed", "pending"] as const),
@@ -117,19 +131,45 @@ const ROUTES: [string, Handler][] = [
         ...q.filters(),
       }),
   ],
-  ["projects/:projectId/responses/:responseId", (p) => demoApi.getResponse(p.projectId, p.responseId)],
-  ["projects/:projectId/surveys", (p) => demoApi.listSurveys(p.projectId)],
-  ["projects/:projectId/graph", (p, q) => demoApi.getGraph(p.projectId, q.filters())],
-  ["projects/:projectId/activity", (p, q) => demoApi.listActivity(p.projectId, { limit: q.int("limit", 1, 100) })],
+  ["projects/:projectId/weights", (api, p) => api.getWeights(p.projectId)],
+  ["projects/:projectId/scores", (api, p) => api.getScores(p.projectId)],
+  ["projects/:projectId/responses/:responseId", (api, p) => api.getResponse(p.projectId, p.responseId)],
+  ["projects/:projectId/surveys", (api, p) => api.listSurveys(p.projectId)],
+  ["projects/:projectId/graph", (api, p, q) => api.getGraph(p.projectId, q.filters())],
+  ["projects/:projectId/activity", (api, p, q) => api.listActivity(p.projectId, { limit: q.int("limit", 1, 100) })],
 ];
 
 // Write routes. The body arrives as parsed JSON; the demo handlers validate it (400 / 409).
-type WriteHandler = (params: Params, body: unknown) => Promise<unknown>;
+type WriteHandler = (api: FeedbackApi, params: Params, body: unknown) => Promise<unknown>;
 const WRITE_ROUTES: [method: string, pattern: string, status: number, handler: WriteHandler][] = [
-  ["POST", "projects/:projectId/vendors", 201, (p, body) => demoApi.createVendor(p.projectId, body as VendorCreate)],
-  ["PATCH", "projects/:projectId/vendors/:vendorId", 200, (p, body) => demoApi.updateVendor(p.projectId, p.vendorId, body as VendorUpdate)],
-  ["DELETE", "projects/:projectId/vendors/:vendorId", 204, (p) => demoApi.deleteVendor(p.projectId, p.vendorId)],
+  ["POST", "auth/login", 200, (api, _, body) => api.login(body as LoginRequest)],
+  ["POST", "users", 201, (api, _, body) => api.createUser(body as UserCreate)],
+  ["PATCH", "users/:userId", 200, (api, p, body) => api.updateUser(p.userId, body as UserUpdate)],
+  ["DELETE", "users/:userId", 204, (api, p) => api.deleteUser(p.userId)],
+  ["POST", "projects/:projectId/vendors", 201, (api, p, body) => api.createVendor(p.projectId, body as VendorCreate)],
+  ["PATCH", "projects/:projectId/vendors/:vendorId", 200, (api, p, body) => api.updateVendor(p.projectId, p.vendorId, body as VendorUpdate)],
+  ["DELETE", "projects/:projectId/vendors/:vendorId", 204, (api, p) => api.deleteVendor(p.projectId, p.vendorId)],
+  ["POST", "projects/:projectId/features", 201, (api, p, body) => api.createFeature(p.projectId, body as FeatureCreate)],
+  ["PATCH", "projects/:projectId/features/:featureId", 200, (api, p, body) => api.updateFeature(p.projectId, p.featureId, body as FeatureUpdate)],
+  ["DELETE", "projects/:projectId/features/:featureId", 204, (api, p) => api.deleteFeature(p.projectId, p.featureId)],
+  [
+    "POST",
+    "projects/:projectId/features/:featureId/feedback",
+    201,
+    (api, p, body) => api.addFeatureFeedback(p.projectId, p.featureId, body as FeedbackInput),
+  ],
+  [
+    "DELETE",
+    "projects/:projectId/features/:featureId/feedback/:entryId",
+    204,
+    (api, p) => api.deleteFeatureFeedback(p.projectId, p.featureId, p.entryId),
+  ],
+  ["PUT", "projects/:projectId/weights", 200, (api, p, body) => api.updateWeights(p.projectId, body as WeightsUpdate)],
 ];
+
+// The caller's demo session, from "Authorization: Bearer <token>".
+const apiFor = (request: NextRequest) =>
+  demoApiFor(request.headers.get("authorization")?.match(/^Bearer (.+)$/i)?.[1]);
 
 function matchPattern(pattern: string, segments: string[]): Params | null {
   const parts = pattern.split("/");
@@ -173,7 +213,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/v1/[...p
 
   try {
     const [handler, params] = route;
-    return NextResponse.json(await handler(params, new Query(request.nextUrl.searchParams)));
+    return NextResponse.json(await handler(apiFor(request), params, new Query(request.nextUrl.searchParams)));
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -197,7 +237,7 @@ async function write(method: string, request: NextRequest, ctx: RouteContext<"/a
           throw new BadRequest("The request body must be a JSON object.");
         }
       }
-      const result = await handler(params, body);
+      const result = await handler(apiFor(request), params, body);
       return status === 204 ? new NextResponse(null, { status }) : NextResponse.json(result, { status });
     } catch (err) {
       return toErrorResponse(err);
@@ -208,4 +248,5 @@ async function write(method: string, request: NextRequest, ctx: RouteContext<"/a
 
 export const POST = (request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) => write("POST", request, ctx);
 export const PATCH = (request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) => write("PATCH", request, ctx);
+export const PUT = (request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) => write("PUT", request, ctx);
 export const DELETE = (request: NextRequest, ctx: RouteContext<"/api/v1/[...path]">) => write("DELETE", request, ctx);

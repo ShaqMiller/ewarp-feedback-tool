@@ -4,10 +4,11 @@ import { plural } from "@/lib/format";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { SentimentBar } from "@/components/ui/feedback";
 import { EmptyState, Pill, Skeleton } from "@/components/ui/primitives";
+import { ScoreBadge } from "./Score";
 
-// Uses GET /projects/:projectId/vendors?sort=fit
+// Uses GET /projects/:projectId/vendors?sort=score
 export async function VendorTable({ projectId, featureCount }: { projectId: string; featureCount: number }) {
-  const { items } = await api.listVendors(projectId, { sort: "fit" });
+  const { items } = await api.listVendors(projectId, { sort: "score" });
   const base = `/projects/${projectId}/vendors`;
   const maxFeedback = Math.max(...items.map((v) => v.sentiment.like + v.sentiment.dislike + v.sentiment.want));
 
@@ -22,11 +23,12 @@ export async function VendorTable({ projectId, featureCount }: { projectId: stri
   return (
     <section className="min-w-0 rounded-[10px] border border-line bg-surface">
       <table className="w-full text-[13px]">
-        <caption className="sr-only">Vendors ranked by how many requests they meet</caption>
+        <caption className="sr-only">Vendors ranked by score</caption>
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">
             <th scope="col" className="py-2.5 pr-3 pl-4 font-medium">Vendor</th>
-            <th scope="col" className="w-[30%] px-3 py-2.5 font-medium">Requests met</th>
+            <th scope="col" className="w-28 px-3 py-2.5 font-medium">Score</th>
+            <th scope="col" className="hidden w-[26%] px-3 py-2.5 font-medium sm:table-cell">Requests met</th>
             <th scope="col" className="hidden px-3 py-2.5 font-medium md:table-cell">Features offered</th>
             <th scope="col" className="hidden px-3 py-2.5 text-right font-medium lg:table-cell">Responses</th>
             <th scope="col" className="hidden w-[22%] px-3 py-2.5 font-medium lg:table-cell">Users&apos; feedback</th>
@@ -41,13 +43,16 @@ export async function VendorTable({ projectId, featureCount }: { projectId: stri
                 <td className="py-3.5 pr-3 pl-4">
                   <Link
                     href={`${base}/${v.id}`}
-                    className="font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:rounded-sm focus-visible:after:outline-2 focus-visible:after:outline-accent"
+                    className="font-semibold whitespace-nowrap after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:rounded-sm focus-visible:after:outline-2 focus-visible:after:outline-accent"
                   >
                     {v.name}
                   </Link>
                   <p className="mt-0.5 text-xs text-muted lg:hidden">{plural(v.responseCount, "response")}</p>
                 </td>
                 <td className="px-3 py-3.5">
+                  <ScoreBadge score={v.score} />
+                </td>
+                <td className="hidden px-3 py-3.5 sm:table-cell">
                   {v.requestsTotal > 0 ? (
                     <div className="flex items-center gap-3">
                       <div

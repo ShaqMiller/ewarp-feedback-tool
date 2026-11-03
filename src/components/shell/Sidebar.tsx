@@ -3,11 +3,12 @@ import { Suspense } from "react";
 import { api, getDataSource } from "@/lib/api";
 import type { Project } from "@/lib/api/types";
 import { cn } from "@/lib/format";
-import { FolderIcon, GearIcon } from "@/components/ui/icons";
+import { FolderIcon, GearIcon, LogOutIcon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/primitives";
 import { NavLink } from "./NavLink";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { projectSections } from "./nav";
+import { signOutAction } from "@/app/login/actions";
 
 export function Logo({ compact }: { compact?: boolean }) {
   return (
@@ -39,6 +40,23 @@ export async function ProjectSwitcherLoader({ current, compact }: { current: Pro
   return <ProjectSwitcher current={current} projects={items} compact={compact} />;
 }
 
+const ROLE_LABELS = { admin: "Admin", viewer: "Viewer · read only" };
+
+function SignOutButton({ className }: { className?: string }) {
+  return (
+    <form action={signOutAction}>
+      <button
+        type="submit"
+        title="Sign out"
+        aria-label="Sign out"
+        className={cn("grid size-[28px] place-items-center rounded-md text-faint hover:bg-chip hover:text-ink", className)}
+      >
+        <LogOutIcon className="size-[15px]" />
+      </button>
+    </form>
+  );
+}
+
 export async function UserBadge({ compact }: { compact?: boolean }) {
   const me = await api.getMe();
   const initials = me.name
@@ -52,19 +70,28 @@ export async function UserBadge({ compact }: { compact?: boolean }) {
       {initials}
     </span>
   );
-  if (compact) return <span title={me.name}>{avatar}</span>;
+  if (compact) {
+    return (
+      <div className="flex items-center gap-1">
+        <span title={`${me.name} · ${ROLE_LABELS[me.role]}`}>{avatar}</span>
+        <SignOutButton />
+      </div>
+    );
+  }
   return (
     <div className="mt-2 flex items-center gap-2.5 border-t border-line px-2 pt-2.5">
       {avatar}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-semibold">{me.name}</p>
-        <p className="text-[11px] text-faint">{me.role}</p>
+        <p className="text-[11px] text-faint">{ROLE_LABELS[me.role]}</p>
       </div>
+      <SignOutButton />
     </div>
   );
 }
 
-export function Sidebar({ project }: { project: Project }) {
+// Settings is only listed for admins; viewers can look at everything else.
+export function Sidebar({ project, admin }: { project: Project; admin: boolean }) {
   const sections = projectSections(project.id);
   const group = (name: string) =>
     sections
@@ -109,11 +136,13 @@ export function Sidebar({ project }: { project: Project }) {
             All projects
           </NavLink>
         </li>
-        <li>
-          <NavLink href={`/projects/${project.id}/settings`} icon={<GearIcon className="size-[15px]" />}>
-            Settings
-          </NavLink>
-        </li>
+        {admin && (
+          <li>
+            <NavLink href={`/projects/${project.id}/settings`} icon={<GearIcon className="size-[15px]" />}>
+              Settings
+            </NavLink>
+          </li>
+        )}
       </ul>
       <Suspense fallback={<Skeleton className="mt-2 h-[38px]" />}>
         <UserBadge />

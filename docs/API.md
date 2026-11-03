@@ -8,32 +8,57 @@ The front end is finished against demo data. This document says what the backend
 |---|---|---|
 | **The contract** | [`docs/openapi.yaml`](openapi.yaml) | Every route, parameter and response schema. Open it in [Swagger Editor](https://editor.swagger.io) or import it into Postman. Most frameworks can generate server stubs or validators from it. |
 | **Live examples** | `npm run dev`, then `http://localhost:3000/api/v1/...` | Call any route and see the exact response the UI expects, using the demo data. For example: `curl http://localhost:3000/api/v1/projects/prj_1/summary` |
-| **Your test** | `npm run check:api -- https://your-api/api/v1` | Calls every route on your server, validates every response against the contract, and checks 404s. It exits non-zero on failure, so it can run in CI. |
+| **Your test** | `EWARP_EMAIL=… EWARP_PASSWORD=… npm run check:api -- https://your-api/api/v1` | Signs in as that admin, calls every route on your server, validates every response against the contract, and checks 401s, 403s and 404s. It exits non-zero on failure, so it can run in CI. Set `EWARP_VIEWER_EMAIL` / `EWARP_VIEWER_PASSWORD` too to check that viewers can't write. |
 | **This guide** | below | What each number means and how it's calculated, plus examples. |
 
 When your API passes `check:api`, point the front end at it:
 
 ```bash
 FEEDBACK_API_URL=https://your-api/api/v1     # required
-FEEDBACK_API_TOKEN=...                       # optional: sent as "Authorization: Bearer <token>"
 ```
 
-The front end calls the API **from its server**, never from the browser. You don't need CORS, and the token is never exposed to users. Per-user authentication isn't decided yet. For now, a shared server-to-server token is enough.
+The front end calls the API **from its server**, never from the browser. You don't need CORS.
+
+## Sign-in and roles
+
+People sign in with email and password. `POST /auth/login` returns a token; the front end keeps it in an httpOnly cookie and sends it as `Authorization: Bearer <token>` on every other call, so **every request is made as the signed-in user**.
+
+| Role | Can |
+|---|---|
+| `admin` | Everything: read every page, add/edit/delete vendors and manual features, add manual feedback, set weights, manage users. |
+| `viewer` | Read every page. Any write, and `GET /users`, is `403`. |
+
+- No token, an expired token or a deleted user: `401` (`unauthorized`). The UI sends the person to the login page.
+- A viewer calling an admin route: `403` (`forbidden`). The UI hides those buttons, so this is a backstop.
+- Check the role on **every request** from your user table, not only from the token, so a role change or removal takes effect immediately.
+- Store salted password hashes only. Rate-limit `/auth/login`.
+- Seed the first admin from config; admins add everyone else in **Settings → Users**.
 
 ## Route index
 
-There are 26 routes: 23 reads (`GET`) and 3 vendor writes used by Settings → Vendors. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
+There are 41 routes: 28 reads (`GET`) and 13 writes. Writes are admin only. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
 
 | Route | Query params | Returns | Used by |
 |---|---|---|---|
-| `/me` | | `CurrentUser` | Sidebar user badge |
+| **`POST`** `/auth/login` | body `{ email, password }` | `Session` (no token needed) | Login page |
+| `/me` | | `CurrentUser` | Sidebar user badge, which buttons to show |
+| `/users` | | `{ items: User[], total }` (admin) | Settings → Users |
+| **`POST`** `/users` | body `{ email, name, password, role }` | `201` `User` | Settings → Users |
+| **`PATCH`** `/users/:userId` | body `{ name?, role?, password? }` | `200` `User` | Settings → Users |
+| **`DELETE`** `/users/:userId` | | `204` | Settings → Users |
 | `/projects` | | `{ items: ProjectListItem[], total }` | Project switcher, All projects |
 | `/projects/:projectId` | | `Project` | Every project page |
 | `/projects/:projectId/summary` | filters | `ProjectSummary` | Dashboard KPIs |
 | `/projects/:projectId/analytics/responses-by-week` | `weeks`, filters | `{ weeks: [...] }` | Dashboard chart |
 | `/projects/:projectId/analytics/coverage` | | `{ all, some, none, total }` | Dashboard donut |
 | `/projects/:projectId/features` | `view`, `q`, `sort`, `limit`, filters | `{ items, total, facets }` | Dashboard, Features page |
+| **`POST`** `/projects/:projectId/features` | body `{ name, vendorIds?, feedback? }` | `201` `Feature` | Features → Add feature |
 | `/projects/:projectId/features/:featureId` | | `Feature` | Feature page |
+| **`PATCH`** `/projects/:projectId/features/:featureId` | body `{ name?, vendorIds? }` | `200` `Feature` | Feature page admin tools |
+| **`DELETE`** `/projects/:projectId/features/:featureId` | | `204` (manual features only) | Feature page admin tools |
+| `/projects/:projectId/features/:featureId/feedback` | | `{ items: FeedbackEntry[], total }` | Feature page "Added by admins" |
+| **`POST`** `/projects/:projectId/features/:featureId/feedback` | body `FeedbackInput` | `201` `FeedbackEntry` | Feature page "Added by admins" |
+| **`DELETE`** `/projects/:projectId/features/:featureId/feedback/:entryId` | | `204` | Feature page "Added by admins" |
 | `/projects/:projectId/features/:featureId/summary` | | `AiSummary` | Feature page |
 | `/projects/:projectId/features/:featureId/responses` | `kind`, `limit`, filters | `{ items: FeatureResponse[], total }` | Feature page, Responses tab |
 | `/projects/:projectId/features/:featureId/vendors` | | `{ items: FeatureVendor[], total }` | Feature page |
@@ -50,6 +75,9 @@ There are 26 routes: 23 reads (`GET`) and 3 vendor writes used by Settings → V
 | `/projects/:projectId/responses` | `vendorId`, `surveyId`, `status`, `q`, `sort`, `limit`, `offset`, filters | `{ items, total, facets }` | Responses page |
 | `/projects/:projectId/responses/:responseId` | | `ResponseDetail` | Response page |
 | `/projects/:projectId/surveys` | | `{ items: Survey[], total }` | Surveys page |
+| `/projects/:projectId/weights` | | `Weights` | Settings → Weights |
+| **`PUT`** `/projects/:projectId/weights` | body `{ groups?, features? }` | `200` `Weights` | Settings → Weights |
+| `/projects/:projectId/scores` | | `{ items: VendorScore[], total, mix }` | Vendor page "Score" |
 | `/projects/:projectId/graph` | filters | `{ responses, features, vendors, links }` | Relationship map |
 | `/projects/:projectId/activity` | `limit` | `{ items: ActivityEvent[], total }` | Dashboard activity |
 
@@ -60,7 +88,8 @@ Sources for the exact shapes: the schema names refer to `components.schemas` in 
 | Topic | Rule |
 |---|---|
 | Base path | `/api/v1`. Every path below is relative to it. |
-| Method | Everything is `GET` except the three vendor writes (`POST`, `PATCH`, `DELETE`). Writes take JSON bodies (`Content-Type: application/json`). |
+| Method | Reads are `GET`; writes are `POST`, `PATCH`, `PUT` and `DELETE` with JSON bodies (`Content-Type: application/json`). |
+| Auth | `Authorization: Bearer <token>` on every route except `POST /auth/login`. See Sign-in and roles. |
 | IDs | Opaque strings. The front end never parses them, so UUIDs, numeric strings or prefixed IDs (`ftr_5`) all work. |
 | Scoping | Child IDs are always looked up inside their project. `/projects/A/features/X` returns **404** if feature X belongs to project B. |
 | Dates | ISO 8601 in UTC (`2026-10-14T12:00:00.000Z`). Week starts are dates only (`2026-10-12`). |
@@ -79,8 +108,11 @@ These are the tables the demo data is built from ([`demo/db.ts`](../src/lib/api/
 | `project` | `id, name, description, createdAt` |
 | `survey` | `id, projectId, name, source, status, createdAt` (`source`: `google_forms`; `status`: `collecting` or `closed`) |
 | `vendor` | `id, projectId, name` |
-| `feature` | `id, projectId, name, createdAt` (created when AI first finds it in a response) |
+| `feature` | `id, projectId, name, createdAt, source, weight` (`source`: `survey` when AI first finds it in a response, `manual` when an admin adds it; `weight`: 0–10, default 1) |
 | `offering` | `featureId, vendorId` (the vendor offers the feature) |
+| `feedback entry` | `id, projectId, featureId, vendorId?, kind, group, note, createdBy, createdAt` (a like / dislike / want an admin entered by hand; `group` is a respondent group below) |
+| `group weight` | `projectId, group, weight` (missing = 1) |
+| `user` | `id, email, name, role, passwordHash, createdAt` |
 | `response` | `id, projectId, surveyId, vendorId, group, likes, dislikes, wants, submittedAt, analyzedAt` (`analyzedAt` stays null until AI has read it) |
 | `mention` | `id, responseId, featureId, kind` (`like`, `dislike` or `want`; one row per feature AI links to a response) |
 
@@ -88,7 +120,9 @@ These are the tables the demo data is built from ([`demo/db.ts`](../src/lib/api/
 
 | Term | Definition |
 |---|---|
-| Mention | One `mention` row. |
+| Mention | One `mention` row **or one manual feedback entry**. Both count the same in every number below and in sentiment counts. Response lists only show survey responses. |
+| Respondent group | Who said it: `pm`, `pd`, `pa`, `congo`, `acquisition`, `data_cell`, `comops`, `wit`, `sponsor` or `other`. Each has a weight. The `group` filter and charts still use the three broad groups: `pm` and `sponsor` map to themselves, the rest to `other`. |
+| Score | Per vendor, 0–100. See `GET /projects/:projectId/scores` below. |
 | Request | A feature with at least one `want` mention. |
 | Unmet request | A request that no vendor in the project offers. |
 | Coverage | Per feature: `all` if every project vendor offers it, `none` if none do, otherwise `some`. |
@@ -102,9 +136,9 @@ When filters are sent, responses (and therefore mentions, requests and counts) a
 ## Endpoints
 
 ### `GET /me`
-Used by: the user badge in the sidebar.
+Used by: the user badge in the sidebar, and every page that decides whether to show edit buttons.
 ```json
-{ "id": "usr_1", "name": "Program office", "role": "Admin" }
+{ "id": "usr_1", "name": "Sam Rivera", "email": "sam@example.com", "role": "admin" }
 ```
 
 ### `GET /projects`
@@ -260,7 +294,7 @@ Used by: Feature page → "Mentioned alongside". Returns other features mentione
 
 ### `GET /projects/:projectId/vendors?sort=fit`
 Used by:
-- Dashboard → "Vendor fit"
+- Dashboard → "Vendor scores"
 - The Features page (`sort=name`), to label the per-vendor coverage dots
 - The Vendors page
 
@@ -358,6 +392,38 @@ Params:
 }
 ```
 
+### Manual features and feedback
+Used by: **Features → Add feature** and the feature page's admin tools and "Added by admins" card. Admin only.
+
+| Route | Body | Success | Errors |
+|---|---|---|---|
+| `POST /projects/:projectId/features` | `{ "name": "Accessibility (Section 508)", "vendorIds": ["vnd_2"], "feedback": [{ "kind": "want", "group": "sponsor", "vendorId": null, "note": "…" }] }` | `201` `Feature` with `source: "manual"` | `400` bad name, unknown vendor, bad feedback · `409` name taken (ignoring case) |
+| `PATCH /projects/:projectId/features/:featureId` | `{ "name"?: "…", "vendorIds"?: [...] }` | `200` `Feature` | `400` · `404` · `409` |
+| `DELETE /projects/:projectId/features/:featureId` | none | `204` | `409` survey answers mention it, or it isn't manual |
+| `POST /projects/:projectId/features/:featureId/feedback` | `{ "kind": "like", "group": "pd", "vendorId": "vnd_2", "note": "…" }` | `201` `FeedbackEntry` | `400` · `404` |
+| `DELETE /projects/:projectId/features/:featureId/feedback/:entryId` | none | `204` | `404` |
+
+Rules:
+- A manual like or dislike that names a vendor also **marks that vendor as offering** the feature (the same rule the classifier uses for survey answers). A want never does: it means the vendor doesn't have it yet.
+- `vendorIds` on PATCH replaces the full list. Pairs an admin takes off **must stay off**, even if old survey likes exist; the backend records removals so the classifier doesn't add them back.
+- Manual entries count in mentions, sentiment, requests, gaps, vendor feedback and scores, exactly like survey mentions.
+
+### Weights and scores
+Used by: **Settings → Weights**, the Vendors page Score column and the vendor page "Score" card.
+
+`GET /projects/:projectId/weights` lists every respondent group and every feature with its weight (0–10, default 1). `PUT` (admin) takes `{ "groups"?: [{ "key": "sponsor", "weight": 2 }], "features"?: [{ "id": "ftr_6", "weight": 3 }] }`, changes only those rows, and is all-or-nothing on errors.
+
+`GET /projects/:projectId/scores` ranks vendors. Each like / dislike / want counts its group's weight (`gw`); each feature counts its own weight (`fw`):
+
+| Part | Formula |
+|---|---|
+| demand(f) | sum of `gw` over f's wants, project-wide |
+| coverage(v) | `Σ fw·demand·offers / Σ fw·demand`, the share of weighted demand the vendor offers (1 when nothing is wanted) |
+| satisfaction(v) | `Σ fw·gw·(likes − dislikes) / Σ fw·gw·(likes + dislikes)` over the features v offers, from its own users (0 when there's none) |
+| score(v) | `round(100 × (0.7 × coverage + 0.3 × (satisfaction + 1) / 2))`; `mix` in the response gives the 0.7 / 0.3 |
+
+Each `breakdown` line's `contribution` is the points that feature adds above the neutral baseline, e.g. offering the most-wanted feature adds the most, and a dislike takes points away. Scores ignore the date and group filters. `VendorListItem.score` is the same number, and `GET /vendors` sorts by it by default.
+
 ### Vendor writes: `POST`, `PATCH`, `DELETE`
 Used by: **Settings → Vendors**, where people add vendors, rename them and tick the features each one offers.
 
@@ -374,7 +440,8 @@ Rules:
 - **`featureIds` replaces the whole list** of features the vendor offers, and `[]` clears it. Changing it immediately changes coverage, gaps and vendor fit on every page.
 - **Never delete a vendor that has responses.** Refuse with `409`. Feedback must always keep its vendor.
 - **Error messages are shown to people** as-is under the form, so write them plainly, e.g. `A vendor named "Prism" already exists in this project.`
-- **Testing:** `npm run check:api -- <url> --writes` tests all of this using a temporary "Contract check …" vendor, which it deletes afterwards.
+- **Admin only:** a viewer gets `403`.
+- **Testing:** `npm run check:api -- <url> --writes` tests these and every other write using a temporary "Contract check …" vendor, feature and user, which it deletes afterwards.
 
 ### `GET /projects/:projectId/responses`
 Used by: the Responses page, where every param comes from its toolbar, chips and pagination, kept in the page URL.

@@ -10,7 +10,7 @@ import { isActive, projectSections } from "./nav";
 const TAB_LABELS = ["Dashboard", "Features", "Vendors", "Responses"];
 
 // Bottom tab bar for phones and tablets; the sidebar takes over from the lg breakpoint.
-export function MobileTabBar({ projectId }: { projectId: string }) {
+export function MobileTabBar({ projectId, admin }: { projectId: string; admin: boolean }) {
   const pathname = usePathname();
   const { open, toggle, close, rootRef, triggerRef } = usePopover();
   const sections = projectSections(projectId);
@@ -18,7 +18,7 @@ export function MobileTabBar({ projectId }: { projectId: string }) {
   const more = [
     ...sections.filter((s) => !TAB_LABELS.includes(s.label)),
     { label: "All projects", href: "/projects", Icon: FolderIcon, exact: true },
-    { label: "Settings", href: `/projects/${projectId}/settings`, Icon: GearIcon, exact: false },
+    ...(admin ? [{ label: "Settings", href: `/projects/${projectId}/settings`, Icon: GearIcon, exact: false }] : []),
   ];
   const moreActive = more.some((s) => isActive(pathname, s.href, s.exact));
 

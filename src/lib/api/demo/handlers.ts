@@ -3,19 +3,31 @@
 
 import { ApiError } from "../errors";
 import type { FeedbackApi } from "../index";
-import type {
-  ActivityEvent,
-  Coverage,
-  FeatureListItem,
-  FeatureView,
-  Group,
-  Id,
-  ProjectFilters,
-  ResponseStatus,
-  ResponseWithMentions,
-  SentimentCounts,
-  SurveyResponse,
-  VendorListItem,
+import {
+  RESPONDENT_GROUP_LABELS,
+  RESPONDENT_GROUPS,
+  type ActivityEvent,
+  type Coverage,
+  type CurrentUser,
+  type FeatureListItem,
+  type FeatureView,
+  type FeedbackEntry,
+  type FeedbackInput,
+  type Group,
+  type Id,
+  type ProjectFilters,
+  type RespondentGroup,
+  type ResponseStatus,
+  type ResponseWithMentions,
+  type Role,
+  type Sentiment,
+  type SentimentCounts,
+  type SurveyResponse,
+  type User,
+  type Feature,
+  type FeatureCreate,
+  type VendorListItem,
+  type VendorScore,
 } from "../types";
 import * as db from "./db";
 
@@ -55,6 +67,108 @@ function vendorOr404(projectId: Id, vendorId: Id) {
 
 // Write validation. The rules match docs/openapi.yaml; messages are shown to people as-is.
 const NAME_MAX = 80;
+const NOTE_MAX = 1000;
+const WEIGHT_MAX = 10;
+const normalize = (name: string) => name.trim().replace(/\s+/g, " ");
+
+function validFeatureName(projectId: Id, input: unknown, exceptId?: Id): string {
+  if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter a feature name.");
+  const name = normalize(input);
+  if (name.length > NAME_MAX) throw new ApiError(400, `Feature names can be at most ${NAME_MAX} characters.`);
+  const taken = db.features.some(
+    (f) => f.projectId === projectId && f.id !== exceptId && f.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (taken) throw new ApiError(409, `A feature named "${name}" already exists in this project.`);
+  return name;
+}
+
+function validVendorIds(projectId: Id, input: unknown): Id[] {
+  if (!Array.isArray(input) || input.some((id) => typeof id !== "string")) {
+    throw new ApiError(400, "vendorIds must be a list of vendor IDs.");
+  }
+  const ids = [...new Set(input as string[])];
+  const unknown = ids.filter((id) => !db.vendors.some((v) => v.id === id && v.projectId === projectId));
+  if (unknown.length > 0) throw new ApiError(400, `Unknown vendor ${unknown.length === 1 ? "ID" : "IDs"}: ${unknown.join(", ")}`);
+  return ids;
+}
+
+function validFeedback(projectId: Id, input: unknown): Required<FeedbackInput> {
+  const e = (input ?? {}) as Record<string, unknown>;
+  if (!["like", "dislike", "want"].includes(e.kind as string)) throw new ApiError(400, "Choose like, dislike or want.");
+  if (!RESPONDENT_GROUPS.includes(e.group as RespondentGroup)) throw new ApiError(400, "Choose which group said it.");
+  const vendorId = e.vendorId === undefined || e.vendorId === null || e.vendorId === "" ? null : e.vendorId;
+  if (vendorId !== null) validVendorIds(projectId, [vendorId]);
+  if (e.note !== undefined && typeof e.note !== "string") throw new ApiError(400, "note must be text.");
+  const note = ((e.note as string | undefined) ?? "").trim();
+  if (note.length > NOTE_MAX) throw new ApiError(400, `Notes can be at most ${NOTE_MAX} characters.`);
+  return { kind: e.kind as Sentiment, group: e.group as RespondentGroup, vendorId: vendorId as Id | null, note };
+}
+
+function validWeight(input: unknown): number {
+  if (typeof input !== "number" || !Number.isFinite(input) || input < 0 || input > WEIGHT_MAX) {
+    throw new ApiError(400, `Weights must be numbers from 0 to ${WEIGHT_MAX}.`);
+  }
+  return input;
+}
+
+// A vendor offers a feature, added once.
+function addOffering(vendorId: Id, featureId: Id) {
+  if (!db.offerings.some((o) => o.vendorId === vendorId && o.featureId === featureId)) db.offerings.push({ featureId, vendorId });
+}
+
+// A manual like or dislike about a vendor means the vendor has the feature (the classifier's rule for surveys).
+function insertFeedback(projectId: Id, featureId: Id, f: Required<FeedbackInput>, userId: Id | null): FeedbackEntry {
+  const row: db.FeedbackRow = {
+    id: `fbk_${crypto.randomUUID().slice(0, 8)}`,
+    projectId,
+    featureId,
+    vendorId: f.vendorId,
+    kind: f.kind,
+    group: f.group,
+    note: f.note,
+    createdBy: userId,
+    createdAt: new Date().toISOString(),
+  };
+  db.feedback.push(row);
+  if (row.vendorId && row.kind !== "want") addOffering(row.vendorId, featureId);
+  return toFeedbackEntry(row);
+}
+
+function toFeedbackEntry(e: db.FeedbackRow): FeedbackEntry {
+  const vendor = e.vendorId ? db.vendors.find((v) => v.id === e.vendorId) : undefined;
+  const author = e.createdBy ? db.users.find((u) => u.id === e.createdBy) : undefined;
+  return {
+    id: e.id,
+    kind: e.kind,
+    group: e.group,
+    vendor: vendor ? { id: vendor.id, name: vendor.name } : null,
+    note: e.note,
+    createdBy: author ? { id: author.id, name: author.name } : null,
+    createdAt: e.createdAt,
+  };
+}
+
+const toUser = (u: db.UserRow): User => ({ id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt });
+const toMe = (u: db.UserRow): CurrentUser => ({ id: u.id, name: u.name, email: u.email, role: u.role });
+const ROLES: Role[] = ["admin", "viewer"];
+const PASSWORD_RULE = "Passwords must be 8 to 128 characters.";
+const validPassword = (input: unknown) => typeof input === "string" && input.length >= 8 && input.length <= 128;
+
+function validUserName(input: unknown) {
+  if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter a name.");
+  const name = normalize(input);
+  if (name.length > NAME_MAX) throw new ApiError(400, `Names can be at most ${NAME_MAX} characters.`);
+  return name;
+}
+
+function userOr404(userId: Id) {
+  const user = db.users.find((u) => u.id === userId);
+  if (!user) throw new ApiError(404, `User ${userId} not found`);
+  return user;
+}
+
+const adminCount = () => db.users.filter((u) => u.role === "admin").length;
+const SESSION_HOURS = 12;
 
 function validVendorName(projectId: Id, input: unknown, exceptId?: Id): string {
   if (typeof input !== "string" || input.trim() === "") throw new ApiError(400, "Enter a vendor name.");
@@ -119,6 +233,29 @@ function mentionsFor(responseIds: Set<Id>) {
   return db.mentions.filter((m) => responseIds.has(m.responseId));
 }
 
+// The three groups filters and charts use. pm and sponsor match a respondent group of the same name.
+const broadGroup = (g: RespondentGroup): Group => (g === "pm" || g === "sponsor" ? g : "other");
+
+// Every like / dislike / want: survey mentions plus manual feedback, after filters
+// (the backend's feedback_mentions view). Counts and scores read these; response lists don't.
+type Signal = { featureId: Id; kind: Sentiment; vendorId: Id | null; group: RespondentGroup };
+function signalsFor(projectId: Id, filters: ProjectFilters = {}): Signal[] {
+  const responses = new Map(responsesFor(projectId, filters).map((r) => [r.id, r]));
+  const survey = db.mentions.flatMap((m) => {
+    const r = responses.get(m.responseId);
+    return r ? [{ featureId: m.featureId, kind: m.kind, vendorId: r.vendorId, group: r.group as RespondentGroup }] : [];
+  });
+  const from = filters.from ? Date.parse(filters.from) : -Infinity;
+  const to = filters.to ? Date.parse(filters.to) + DAY : Infinity;
+  const manual = db.feedback
+    .filter((e) => {
+      const t = Date.parse(e.createdAt);
+      return e.projectId === projectId && t >= from && t < to && (!filters.group || broadGroup(e.group) === filters.group);
+    })
+    .map((e) => ({ featureId: e.featureId, kind: e.kind, vendorId: e.vendorId, group: e.group }));
+  return [...survey, ...manual];
+}
+
 const vendorIdsOf = (projectId: Id) => db.vendors.filter((v) => v.projectId === projectId).map((v) => v.id);
 const offeredBy = (featureId: Id) => db.offerings.filter((o) => o.featureId === featureId).map((o) => o.vendorId);
 
@@ -130,13 +267,12 @@ function coverageOf(featureId: Id, projectVendorIds: Id[]): Coverage {
 
 // Features at least one (filtered) response wants.
 function requestedFeatureIds(projectId: Id, filters?: ProjectFilters) {
-  const ids = new Set(responsesFor(projectId, filters).map((r) => r.id));
-  return new Set(mentionsFor(ids).filter((m) => m.kind === "want").map((m) => m.featureId));
+  return new Set(signalsFor(projectId, filters).filter((m) => m.kind === "want").map((m) => m.featureId));
 }
 
 function featureItems(projectId: Id, filters?: ProjectFilters): (FeatureListItem & { createdAt: string })[] {
   const vendorIds = vendorIdsOf(projectId);
-  const ms = mentionsFor(new Set(responsesFor(projectId, filters).map((r) => r.id)));
+  const ms = signalsFor(projectId, filters);
   return db.features
     .filter((f) => f.projectId === projectId)
     .map((f) => {
@@ -150,6 +286,8 @@ function featureItems(projectId: Id, filters?: ProjectFilters): (FeatureListItem
         vendorIds: offeredBy(f.id),
         mentions: sentiment.like + sentiment.dislike + sentiment.want,
         sentiment,
+        source: f.source,
+        weight: f.weight,
       };
     });
 }
@@ -157,13 +295,15 @@ function featureItems(projectId: Id, filters?: ProjectFilters): (FeatureListItem
 function vendorItems(projectId: Id, filters?: ProjectFilters): (VendorListItem & { featureIds: Id[] })[] {
   const responses = responsesFor(projectId, filters);
   const requested = requestedFeatureIds(projectId, filters);
+  const signals = signalsFor(projectId, filters);
+  const scores = new Map(scoresFor(projectId).map((s) => [s.vendor.id, s.score])); // scores ignore filters
   return db.vendors
     .filter((v) => v.projectId === projectId)
     .map((v) => {
       const featureIds = db.offerings.filter((o) => o.vendorId === v.id).map((o) => o.featureId);
       const own = responses.filter((r) => r.vendorId === v.id);
       const sentiment = emptyCounts();
-      for (const m of mentionsFor(new Set(own.map((r) => r.id)))) sentiment[m.kind] += 1;
+      for (const m of signals) if (m.vendorId === v.id) sentiment[m.kind] += 1;
       return {
         id: v.id,
         name: v.name,
@@ -174,8 +314,69 @@ function vendorItems(projectId: Id, filters?: ProjectFilters): (VendorListItem &
         featureCount: featureIds.length,
         exclusiveCount: featureIds.filter((id) => offeredBy(id).length === 1).length,
         sentiment,
+        score: scores.get(v.id) ?? 0,
       };
     });
+}
+
+// Vendor scores, the same formula as the backend's ScoringRepository (see VendorScore in types.ts).
+export const SCORE_MIX = { coverage: 0.7, satisfaction: 0.3 };
+const groupWeight = (projectId: Id, group: RespondentGroup) =>
+  db.groupWeights.find((w) => w.projectId === projectId && w.group === group)?.weight ?? 1;
+
+function scoresFor(projectId: Id): VendorScore[] {
+  const features = db.features.filter((f) => f.projectId === projectId);
+  const signals = signalsFor(projectId);
+  const sum = (kind: Sentiment, featureId: Id, vendorId?: Id) =>
+    signals
+      .filter((m) => m.kind === kind && m.featureId === featureId && (vendorId === undefined || m.vendorId === vendorId))
+      .reduce((total, m) => total + groupWeight(projectId, m.group), 0);
+  const demand = new Map(features.map((f) => [f.id, sum("want", f.id)]));
+
+  return db.vendors
+    .filter((v) => v.projectId === projectId)
+    .map((v) => {
+      const rows = features.map((f) => {
+        const offers = db.offerings.some((o) => o.vendorId === v.id && o.featureId === f.id);
+        return {
+          f,
+          offers,
+          want: demand.get(f.id)!,
+          like: offers ? sum("like", f.id, v.id) : 0,
+          dislike: offers ? sum("dislike", f.id, v.id) : 0,
+        };
+      });
+      const totalDemand = rows.reduce((t, r) => t + r.f.weight * r.want, 0);
+      const metDemand = rows.reduce((t, r) => t + (r.offers ? r.f.weight * r.want : 0), 0);
+      const net = rows.reduce((t, r) => t + r.f.weight * (r.like - r.dislike), 0);
+      const volume = rows.reduce((t, r) => t + r.f.weight * (r.like + r.dislike), 0);
+      const coverage = totalDemand > 0 ? metDemand / totalDemand : 1;
+      const satisfaction = volume > 0 ? net / volume : 0;
+      // Points each feature adds on top of the neutral baseline.
+      const points = (r: (typeof rows)[number]) =>
+        (totalDemand > 0 && r.offers ? (100 * SCORE_MIX.coverage * r.f.weight * r.want) / totalDemand : 0) +
+        (volume > 0 ? (100 * (SCORE_MIX.satisfaction / 2) * r.f.weight * (r.like - r.dislike)) / volume : 0);
+      const breakdown = rows
+        .filter((r) => r.want > 0 || r.like > 0 || r.dislike > 0)
+        .map((r) => ({
+          feature: { id: r.f.id, name: r.f.name },
+          weight: r.f.weight,
+          demand: r.want,
+          offers: r.offers,
+          likes: r.like,
+          dislikes: r.dislike,
+          contribution: Math.round(points(r) * 10) / 10,
+        }))
+        .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+      return {
+        vendor: { id: v.id, name: v.name },
+        score: Math.round(100 * (SCORE_MIX.coverage * coverage + (SCORE_MIX.satisfaction * (satisfaction + 1)) / 2)),
+        coverage: Math.round(coverage * 1000) / 1000,
+        satisfaction: Math.round(satisfaction * 1000) / 1000,
+        breakdown,
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.vendor.name.localeCompare(b.vendor.name));
 }
 
 // Monday 00:00 UTC of the week containing `t`.
@@ -185,10 +386,77 @@ function weekStart(t: number) {
   return day.getTime() - ((day.getUTCDay() + 6) % 7) * DAY;
 }
 
-export const demoApi: FeedbackApi = {
-  async getMe() {
+// The demo API without sign-in checks. demoApiFor (bottom of the file) adds them.
+// The writes that need to know who is asking take the user's ID as an extra argument.
+type DemoApi = Omit<FeedbackApi, "getMe" | "createFeature" | "addFeatureFeedback" | "deleteUser"> & {
+  createFeature(projectId: Id, body: FeatureCreate, userId: Id | null): Promise<Feature>;
+  addFeatureFeedback(projectId: Id, featureId: Id, body: FeedbackInput, userId: Id | null): Promise<FeedbackEntry>;
+  deleteUser(userId: Id, currentUserId: Id): Promise<void>;
+};
+
+export const demoApi: DemoApi = {
+  async login(body) {
     await sleep();
-    return { id: "usr_1", name: "Program office", role: "Admin" };
+    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    const user = db.users.find((u) => u.email === email);
+    if (!user || user.password !== body?.password) throw new ApiError(401, "That email and password don't match.");
+    const token = crypto.randomUUID();
+    const expiresAt = Date.now() + SESSION_HOURS * 3_600_000;
+    db.sessions.set(token, { userId: user.id, expiresAt });
+    return { token, expiresAt: new Date(expiresAt).toISOString(), user: toMe(user) };
+  },
+
+  async listUsers() {
+    await sleep();
+    const items = [...db.users].sort((a, b) => a.name.localeCompare(b.name)).map(toUser);
+    return { items, total: items.length };
+  },
+
+  async createUser(body) {
+    await sleep();
+    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new ApiError(400, "Enter a valid email.");
+    const name = validUserName(body?.name);
+    if (!validPassword(body?.password)) throw new ApiError(400, PASSWORD_RULE);
+    if (!ROLES.includes(body?.role)) throw new ApiError(400, "role must be admin or viewer.");
+    if (db.users.some((u) => u.email === email)) throw new ApiError(409, `A user with the email ${email} already exists.`);
+    const user: db.UserRow = {
+      id: `usr_${crypto.randomUUID().slice(0, 8)}`,
+      email,
+      name,
+      role: body.role,
+      password: body.password,
+      createdAt: new Date().toISOString(),
+    };
+    db.users.push(user);
+    return toUser(user);
+  },
+
+  async updateUser(userId, body) {
+    await sleep();
+    const user = userOr404(userId);
+    if (body?.name === undefined && body?.role === undefined && body?.password === undefined) {
+      throw new ApiError(400, "Send at least one of name, role or password.");
+    }
+    const name = body.name === undefined ? undefined : validUserName(body.name);
+    if (body.role !== undefined && !ROLES.includes(body.role)) throw new ApiError(400, "role must be admin or viewer.");
+    if (body.password !== undefined && !validPassword(body.password)) throw new ApiError(400, PASSWORD_RULE);
+    if (user.role === "admin" && body.role === "viewer" && adminCount() <= 1) {
+      throw new ApiError(409, "This is the only admin. Make someone else an admin first.");
+    }
+    if (name !== undefined) user.name = name;
+    if (body.role !== undefined) user.role = body.role;
+    if (body.password !== undefined) user.password = body.password;
+    return toUser(user);
+  },
+
+  async deleteUser(userId, currentUserId) {
+    await sleep();
+    if (userId === currentUserId) throw new ApiError(409, "You can't delete your own account.");
+    const user = userOr404(userId);
+    if (user.role === "admin" && adminCount() <= 1) throw new ApiError(409, "This is the only admin, so it can't be deleted.");
+    db.users.splice(db.users.indexOf(user), 1);
+    for (const [token, session] of db.sessions) if (session.userId === userId) db.sessions.delete(token);
   },
 
   async listProjects() {
@@ -228,7 +496,7 @@ export const demoApi: FeedbackApi = {
     await sleep();
     projectOr404(projectId);
     const rs = responsesFor(projectId, filters);
-    const ms = mentionsFor(new Set(rs.map((r) => r.id)));
+    const ms = signalsFor(projectId, filters);
     const sentiment = emptyCounts();
     for (const m of ms) sentiment[m.kind] += 1;
     const requested = requestedFeatureIds(projectId, filters);
@@ -313,6 +581,72 @@ export const demoApi: FeedbackApi = {
     return feature;
   },
 
+  async createFeature(projectId, body, userId) {
+    await sleep();
+    projectOr404(projectId);
+    const name = validFeatureName(projectId, body?.name);
+    const vendorIds = body?.vendorIds === undefined ? [] : validVendorIds(projectId, body.vendorIds);
+    if (body?.feedback !== undefined && (!Array.isArray(body.feedback) || body.feedback.length > 50)) {
+      throw new ApiError(400, "feedback must be a list of up to 50 entries.");
+    }
+    const feedback = (body?.feedback ?? []).map((e) => validFeedback(projectId, e));
+    const id = `ftr_${crypto.randomUUID().slice(0, 8)}`;
+    db.features.push({ id, projectId, name, createdAt: new Date().toISOString(), source: "manual", weight: 1 });
+    for (const vendorId of vendorIds) addOffering(vendorId, id);
+    for (const e of feedback) insertFeedback(projectId, id, e, userId);
+    return demoApi.getFeature(projectId, id);
+  },
+
+  async updateFeature(projectId, featureId, body) {
+    await sleep();
+    const feature = featureOr404(projectId, featureId);
+    if (body?.name === undefined && body?.vendorIds === undefined) throw new ApiError(400, "Send a name, vendorIds, or both.");
+    const name = body.name === undefined ? undefined : validFeatureName(projectId, body.name, featureId);
+    const vendorIds = body.vendorIds === undefined ? undefined : validVendorIds(projectId, body.vendorIds);
+    if (name !== undefined) feature.name = name;
+    if (vendorIds !== undefined) {
+      // Replace the vendors that offer this feature with exactly the given list.
+      for (let i = db.offerings.length - 1; i >= 0; i--) if (db.offerings[i].featureId === featureId) db.offerings.splice(i, 1);
+      for (const vendorId of vendorIds) addOffering(vendorId, featureId);
+    }
+    return demoApi.getFeature(projectId, featureId);
+  },
+
+  async deleteFeature(projectId, featureId) {
+    await sleep();
+    const feature = featureOr404(projectId, featureId);
+    if (feature.source !== "manual") throw new ApiError(409, "This feature came from survey answers, so it can't be deleted.");
+    const mentions = db.mentions.filter((m) => m.featureId === featureId).length;
+    if (mentions > 0) throw new ApiError(409, `Survey answers mention this feature ${mentions} times, so it can't be deleted.`);
+    db.features.splice(db.features.indexOf(feature), 1);
+    for (let i = db.offerings.length - 1; i >= 0; i--) if (db.offerings[i].featureId === featureId) db.offerings.splice(i, 1);
+    for (let i = db.feedback.length - 1; i >= 0; i--) if (db.feedback[i].featureId === featureId) db.feedback.splice(i, 1);
+  },
+
+  async listFeatureFeedback(projectId, featureId) {
+    await sleep();
+    featureOr404(projectId, featureId);
+    const items = db.feedback
+      .filter((e) => e.featureId === featureId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(toFeedbackEntry);
+    return { items, total: items.length };
+  },
+
+  async addFeatureFeedback(projectId, featureId, body, userId) {
+    await sleep();
+    featureOr404(projectId, featureId);
+    return insertFeedback(projectId, featureId, validFeedback(projectId, body), userId);
+  },
+
+  async deleteFeatureFeedback(projectId, featureId, entryId) {
+    await sleep();
+    featureOr404(projectId, featureId);
+    const i = db.feedback.findIndex((e) => e.id === entryId && e.featureId === featureId);
+    if (i === -1) throw new ApiError(404, `Feedback ${entryId} not found`);
+    db.feedback.splice(i, 1);
+  },
+
   async getFeatureSummary(projectId, featureId) {
     await sleep();
     featureOr404(projectId, featureId);
@@ -348,10 +682,7 @@ export const demoApi: FeedbackApi = {
       .filter((v) => v.projectId === projectId)
       .map((v) => {
         const sentiment = emptyCounts();
-        for (const m of db.mentions) {
-          if (m.featureId !== featureId) continue;
-          if (db.responses.find((r) => r.id === m.responseId)?.vendorId === v.id) sentiment[m.kind] += 1;
-        }
+        for (const m of signalsFor(projectId)) if (m.featureId === featureId && m.vendorId === v.id) sentiment[m.kind] += 1;
         return { vendor: { id: v.id, name: v.name }, offers: offering.includes(v.id), sentiment };
       })
       .sort((a, b) => Number(b.offers) - Number(a.offers) || a.vendor.name.localeCompare(b.vendor.name));
@@ -380,13 +711,13 @@ export const demoApi: FeedbackApi = {
     return { items: limit ? all.slice(0, limit) : all, total: all.length };
   },
 
-  async listVendors(projectId, { sort = "fit", limit, ...filters } = {}) {
+  async listVendors(projectId, { sort = "score", limit, ...filters } = {}) {
     await sleep();
     projectOr404(projectId);
+    const fit = (a: VendorListItem, b: VendorListItem) =>
+      b.requestsMet - a.requestsMet || b.responseCount - a.responseCount || a.name.localeCompare(b.name);
     const all = vendorItems(projectId, filters).sort((a, b) =>
-      sort === "name"
-        ? a.name.localeCompare(b.name)
-        : b.requestsMet - a.requestsMet || b.responseCount - a.responseCount || a.name.localeCompare(b.name),
+      sort === "name" ? a.name.localeCompare(b.name) : sort === "fit" ? fit(a, b) : b.score - a.score || fit(a, b),
     );
     const items = (limit ? all.slice(0, limit) : all).map((v) => omit(v, "featureIds"));
     return { items, total: all.length };
@@ -439,6 +770,51 @@ export const demoApi: FeedbackApi = {
     }
     db.vendors.splice(db.vendors.indexOf(vendor), 1);
     for (let i = db.offerings.length - 1; i >= 0; i--) if (db.offerings[i].vendorId === vendorId) db.offerings.splice(i, 1);
+    for (const e of db.feedback) if (e.vendorId === vendorId) e.vendorId = null;
+  },
+
+  async getWeights(projectId) {
+    await sleep();
+    projectOr404(projectId);
+    return {
+      groups: RESPONDENT_GROUPS.map((key) => ({ key, label: RESPONDENT_GROUP_LABELS[key], weight: groupWeight(projectId, key) })),
+      features: db.features
+        .filter((f) => f.projectId === projectId)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((f) => ({ id: f.id, name: f.name, source: f.source, weight: f.weight })),
+    };
+  },
+
+  async updateWeights(projectId, body) {
+    await sleep();
+    projectOr404(projectId);
+    if (body?.groups === undefined && body?.features === undefined) throw new ApiError(400, "Send groups and/or features.");
+    if (body.groups !== undefined && !Array.isArray(body.groups)) throw new ApiError(400, "groups must be a list.");
+    if (body.features !== undefined && !Array.isArray(body.features)) throw new ApiError(400, "features must be a list.");
+    // Check everything first, so a bad row changes nothing.
+    const groups = (body.groups ?? []).map((g) => {
+      if (!RESPONDENT_GROUPS.includes(g?.key)) throw new ApiError(400, `Unknown group: ${g?.key}`);
+      return { key: g.key, weight: validWeight(g.weight) };
+    });
+    const features = (body.features ?? []).map((f) => {
+      const row = db.features.find((x) => x.id === f?.id && x.projectId === projectId);
+      if (!row) throw new ApiError(400, `Unknown feature ID: ${f?.id}`);
+      return { row, weight: validWeight(f.weight) };
+    });
+    for (const { key, weight } of groups) {
+      const existing = db.groupWeights.find((w) => w.projectId === projectId && w.group === key);
+      if (existing) existing.weight = weight;
+      else db.groupWeights.push({ projectId, group: key, weight });
+    }
+    for (const { row, weight } of features) row.weight = weight;
+    return demoApi.getWeights(projectId);
+  },
+
+  async getScores(projectId) {
+    await sleep();
+    projectOr404(projectId);
+    const items = scoresFor(projectId);
+    return { items, total: items.length, mix: SCORE_MIX };
   },
 
   async getVendorSummary(projectId, vendorId) {
@@ -456,7 +832,7 @@ export const demoApi: FeedbackApi = {
   async listVendorRequests(projectId, vendorId, filters) {
     await sleep();
     vendorOr404(projectId, vendorId);
-    const ms = mentionsFor(new Set(responsesFor(projectId, filters).map((r) => r.id)));
+    const ms = signalsFor(projectId, filters);
     const wants = new Map<Id, number>();
     for (const m of ms) if (m.kind === "want") wants.set(m.featureId, (wants.get(m.featureId) ?? 0) + 1);
     const items = [...wants.entries()]
@@ -473,12 +849,12 @@ export const demoApi: FeedbackApi = {
   async listVendorFeatures(projectId, vendorId, filters) {
     await sleep();
     vendorOr404(projectId, vendorId);
-    const own = new Set(responsesFor(projectId, filters).filter((r) => r.vendorId === vendorId).map((r) => r.id));
+    const own = signalsFor(projectId, filters).filter((m) => m.vendorId === vendorId);
     const items = db.offerings
       .filter((o) => o.vendorId === vendorId)
       .map((o) => {
         const sentiment = emptyCounts();
-        for (const m of db.mentions) if (m.featureId === o.featureId && own.has(m.responseId)) sentiment[m.kind] += 1;
+        for (const m of own) if (m.featureId === o.featureId) sentiment[m.kind] += 1;
         return {
           id: o.featureId,
           name: db.features.find((f) => f.id === o.featureId)!.name,
@@ -625,3 +1001,56 @@ export const demoApi: FeedbackApi = {
     return { items: sorted.slice(0, limit), total: sorted.length };
   },
 };
+
+// The demo API as one signed-in user sees it: 401 without a valid session, 403 when a viewer tries to change something.
+// `token` comes from the session cookie (app pages) or the Authorization header (the /api/v1 reference API).
+const ADMIN_ONLY = new Set<string>([
+  "createVendor",
+  "updateVendor",
+  "deleteVendor",
+  "listUsers",
+  "createUser",
+  "updateUser",
+  "deleteUser",
+  "createFeature",
+  "updateFeature",
+  "deleteFeature",
+  "addFeatureFeedback",
+  "deleteFeatureFeedback",
+  "updateWeights",
+]);
+
+export function demoApiFor(token: string | undefined): FeedbackApi {
+  const signedIn = () => {
+    const session = token ? db.sessions.get(token) : undefined;
+    const user = session && session.expiresAt > Date.now() ? db.users.find((u) => u.id === session.userId) : undefined;
+    if (!user) throw new ApiError(401, "Sign in to continue.");
+    return user;
+  };
+  const allowed = (name: string) => {
+    const user = signedIn();
+    if (ADMIN_ONLY.has(name) && user.role !== "admin") throw new ApiError(403, "Only admins can do that.");
+    return user;
+  };
+  const guarded = Object.fromEntries(
+    Object.entries(demoApi).map(([name, fn]) => [
+      name,
+      async (...args: unknown[]) => {
+        allowed(name);
+        return (fn as (...a: unknown[]) => unknown)(...args);
+      },
+    ]),
+  ) as unknown as FeedbackApi;
+  return {
+    ...guarded,
+    login: demoApi.login,
+    async getMe() {
+      await sleep();
+      return toMe(signedIn());
+    },
+    createFeature: async (projectId, body) => demoApi.createFeature(projectId, body, allowed("createFeature").id),
+    addFeatureFeedback: async (projectId, featureId, body) =>
+      demoApi.addFeatureFeedback(projectId, featureId, body, allowed("addFeatureFeedback").id),
+    deleteUser: async (userId) => demoApi.deleteUser(userId, allowed("deleteUser").id),
+  };
+}

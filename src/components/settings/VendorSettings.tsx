@@ -20,7 +20,7 @@ export type SettingsFeature = { id: string; name: string; coverage: Coverage };
 const inputClass =
   "h-[34px] w-full min-w-0 rounded-[7px] border border-line bg-surface px-2.5 text-[13px] placeholder:text-faint aria-[invalid=true]:border-dislike";
 
-function FormMessage({ id, state }: { id: string; state: ActionResult }) {
+export function FormMessage({ id, state }: { id: string; state: ActionResult }) {
   if (!state) return null;
   return (
     <p id={id} role={state.ok ? "status" : "alert"} className={cn("text-xs", state.ok ? "text-like" : "text-dislike")}>

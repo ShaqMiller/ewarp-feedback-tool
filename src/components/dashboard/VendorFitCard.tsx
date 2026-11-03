@@ -2,15 +2,16 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { Card, CardMeta } from "@/components/ui/Card";
 import { EmptyState, Skeleton } from "@/components/ui/primitives";
+import { ScoreBadge } from "@/components/vendors/Score";
 
-const TITLE = "Vendor fit";
+const TITLE = "Vendor scores";
 
-// Uses GET /projects/:projectId/vendors?sort=fit
+// Uses GET /projects/:projectId/vendors?sort=score
 export async function VendorFitCard({ projectId }: { projectId: string }) {
-  const { items } = await api.listVendors(projectId, { sort: "fit" });
+  const { items } = await api.listVendors(projectId, { sort: "score" });
 
   return (
-    <Card title={TITLE} action={items.length > 0 && <CardMeta>Requests offered</CardMeta>}>
+    <Card title={TITLE} action={items.length > 0 && <CardMeta>Out of 100</CardMeta>}>
       {items.length === 0 ? (
         <EmptyState title="No vendors yet">Vendors appear here once they are added to this project.</EmptyState>
       ) : (
@@ -22,10 +23,7 @@ export async function VendorFitCard({ projectId }: { projectId: string }) {
                 className="my-px flex items-center gap-2.5 rounded-md px-2 py-2 text-xs transition-colors hover:bg-chip"
               >
                 <span className="min-w-0 flex-1 truncate font-semibold">{v.name}</span>
-                <span className="text-muted tabular-nums">{v.responseCount} resp.</span>
-                <span className="w-14 text-right font-semibold tabular-nums">
-                  {v.requestsTotal > 0 ? `${v.requestsMet} of ${v.requestsTotal}` : "—"}
-                </span>
+                <ScoreBadge score={v.score} className="shrink-0" />
               </Link>
             </li>
           ))}

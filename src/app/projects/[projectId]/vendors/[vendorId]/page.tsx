@@ -11,6 +11,7 @@ import {
   VendorSummaryCard,
   VendorSummarySkeleton,
 } from "@/components/vendors/detail/OverviewCards";
+import { ScoreCard, ScoreSkeleton } from "@/components/vendors/Score";
 
 // Vendor overview. Each card loads its own endpoint and streams in independently.
 export default async function VendorOverviewPage({ params }: PageProps<"/projects/[projectId]/vendors/[vendorId]">) {
@@ -27,6 +28,9 @@ export default async function VendorOverviewPage({ params }: PageProps<"/project
         </AsyncSlot>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+        <AsyncSlot title="Score" fallback={<ScoreSkeleton />}>
+          <ScoreCard {...ids} />
+        </AsyncSlot>
         <AsyncSlot title="Requests" fallback={<RequestsSkeleton />}>
           <RequestsCard {...ids} />
         </AsyncSlot>

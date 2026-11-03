@@ -2,7 +2,7 @@
 // and handlers.ts answers each endpoint from these rows.
 // Dates are relative to server start so "this week" and the weekly chart always have data.
 
-import type { Group, Id, Sentiment } from "../types";
+import type { FeatureSource, Group, Id, RespondentGroup, Role, Sentiment } from "../types";
 
 export type ProjectRow = { id: Id; name: string; description: string; createdAt: string };
 export type SurveyRow = {
@@ -14,7 +14,7 @@ export type SurveyRow = {
   createdAt: string;
 };
 export type VendorRow = { id: Id; projectId: Id; name: string };
-export type FeatureRow = { id: Id; projectId: Id; name: string; createdAt: string };
+export type FeatureRow = { id: Id; projectId: Id; name: string; createdAt: string; source: FeatureSource; weight: number };
 export type OfferingRow = { featureId: Id; vendorId: Id }; // vendor offers feature
 export type ResponseRow = {
   id: Id;
@@ -29,6 +29,22 @@ export type ResponseRow = {
   analyzedAt: string | null; // null until AI has read it
 };
 export type MentionRow = { id: Id; responseId: Id; featureId: Id; kind: Sentiment };
+// A like / dislike / want an admin entered by hand. Counts everywhere a mention does.
+export type FeedbackRow = {
+  id: Id;
+  projectId: Id;
+  featureId: Id;
+  vendorId: Id | null;
+  kind: Sentiment;
+  group: RespondentGroup;
+  note: string;
+  createdBy: Id | null;
+  createdAt: string;
+};
+export type GroupWeightRow = { projectId: Id; group: RespondentGroup; weight: number }; // missing = 1
+// Demo only: passwords are kept as plain text in memory. The real backend stores salted hashes.
+export type UserRow = { id: Id; email: string; name: string; role: Role; password: string; createdAt: string };
+export type SessionRow = { userId: Id; expiresAt: number };
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -95,16 +111,6 @@ const featureSeed: [Id, Id, string, Id[]][] = [
   ["ftr_20", "prj_3", "Expiry reminders", []],
   ["ftr_21", "prj_3", "Compliance reports", ["vnd_7"]],
 ];
-
-// Vendors and offerings can be edited from Settings. Next.js loads the app pages and the /api/v1 route
-// as separate module copies, so these two tables live on globalThis to be shared (until the server restarts).
-const shared = globalThis as typeof globalThis & { __ewarpDemo?: { vendors: VendorRow[]; offerings: OfferingRow[] } };
-shared.__ewarpDemo ??= {
-  vendors: vendorSeed,
-  offerings: featureSeed.flatMap(([featureId, , , vendorIds]) => vendorIds.map((vendorId) => ({ featureId, vendorId }))),
-};
-export const vendors = shared.__ewarpDemo.vendors;
-export const offerings = shared.__ewarpDemo.offerings;
 
 type ResponseSeed = Omit<ResponseRow, "projectId" | "surveyId" | "submittedAt" | "analyzedAt"> & {
   daysAgo: number;
@@ -183,12 +189,70 @@ export const vendorSummaries: Record<Id, string> = {
   vnd_6: "Vendor A covers the course catalog and certificate tracking. Its users like the catalog but struggle to see upcoming expiries, and it doesn't offer expiry reminders, the project's most requested feature.",
 };
 
-// A feature is created when AI first finds it in a response.
-export const features: FeatureRow[] = featureSeed.map(([id, projectId, name]) => {
+// A survey feature is created when AI first finds it in a response.
+const featureWeights: Record<Id, number> = { ftr_6: 2, ftr_12: 2 }; // single sign-on and the audit log matter most
+const surveyFeatures: FeatureRow[] = featureSeed.map(([id, projectId, name]) => {
   const firstSeen = mentions
     .filter((m) => m.featureId === id)
     .map((m) => responses.find((r) => r.id === m.responseId)?.analyzedAt)
     .filter((d): d is string => !!d)
     .sort()[0];
-  return { id, projectId, name, createdAt: firstSeen ?? projects.find((p) => p.id === projectId)!.createdAt };
+  return {
+    id,
+    projectId,
+    name,
+    createdAt: firstSeen ?? projects.find((p) => p.id === projectId)!.createdAt,
+    source: "survey",
+    weight: featureWeights[id] ?? 1,
+  };
 });
+
+// One feature an admin added by hand, with the feedback that came from a meeting rather than a survey.
+const manualFeature: FeatureRow = { id: "ftr_22", projectId: "prj_1", name: "Accessibility (Section 508)", createdAt: daysAgo(9), source: "manual", weight: 2 };
+const feedbackSeed: FeedbackRow[] = [
+  { id: "fbk_1", projectId: "prj_1", featureId: "ftr_22", vendorId: null, kind: "want", group: "sponsor", note: "Required before any rollout, raised at the sponsor review.", createdBy: "usr_admin", createdAt: daysAgo(9) },
+  { id: "fbk_2", projectId: "prj_1", featureId: "ftr_22", vendorId: "vnd_2", kind: "like", group: "pd", note: "Screen reader support worked well in the Vendor 2 demo.", createdBy: "usr_admin", createdAt: daysAgo(7) },
+  { id: "fbk_3", projectId: "prj_1", featureId: "ftr_12", vendorId: null, kind: "want", group: "acquisition", note: "Contracting needs a record of every change.", createdBy: "usr_admin", createdAt: daysAgo(6) },
+];
+
+// Demo sign-in. Both accounts use DEMO_PASSWORD; the login page also has one-click demo buttons.
+export const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? "ewarp-demo";
+export const DEMO_ACCOUNTS = { admin: "admin@demo.test", viewer: "viewer@demo.test" } as const;
+const userSeed: UserRow[] = [
+  { id: "usr_admin", email: DEMO_ACCOUNTS.admin, name: "Demo Admin", role: "admin", password: DEMO_PASSWORD, createdAt: daysAgo(30) },
+  { id: "usr_viewer", email: DEMO_ACCOUNTS.viewer, name: "Demo Viewer", role: "viewer", password: DEMO_PASSWORD, createdAt: daysAgo(20) },
+];
+
+// Tables that can be edited from the app. Next.js loads the app pages and the /api/v1 route as separate
+// module copies, so these live on globalThis to be shared (until the server restarts).
+type Editable = {
+  vendors: VendorRow[];
+  offerings: OfferingRow[];
+  features: FeatureRow[];
+  feedback: FeedbackRow[];
+  groupWeights: GroupWeightRow[];
+  users: UserRow[];
+  sessions: Map<string, SessionRow>;
+};
+const shared = globalThis as typeof globalThis & { __ewarpDemo?: Editable };
+if (!shared.__ewarpDemo?.sessions) {
+  shared.__ewarpDemo = {
+    vendors: vendorSeed,
+    offerings: [
+      ...featureSeed.flatMap(([featureId, , , vendorIds]) => vendorIds.map((vendorId) => ({ featureId, vendorId }))),
+      { featureId: "ftr_22", vendorId: "vnd_2" },
+    ],
+    features: [...surveyFeatures, manualFeature],
+    feedback: feedbackSeed,
+    groupWeights: [{ projectId: "prj_1", group: "sponsor", weight: 2 }],
+    users: userSeed,
+    sessions: new Map(),
+  };
+}
+export const vendors = shared.__ewarpDemo.vendors;
+export const offerings = shared.__ewarpDemo.offerings;
+export const features = shared.__ewarpDemo.features;
+export const feedback = shared.__ewarpDemo.feedback;
+export const groupWeights = shared.__ewarpDemo.groupWeights;
+export const users = shared.__ewarpDemo.users;
+export const sessions = shared.__ewarpDemo.sessions;
