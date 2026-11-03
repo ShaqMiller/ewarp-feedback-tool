@@ -32,7 +32,7 @@ People sign in with email and password. `POST /auth/login` returns a token; the 
 - A viewer calling an admin route: `403` (`forbidden`). The UI hides those buttons, so this is a backstop.
 - Check the role on **every request** from your user table, not only from the token, so a role change or removal takes effect immediately.
 - Store salted password hashes only. Rate-limit `/auth/login`.
-- Seed the first admin from config; admins add everyone else in **Settings → Users**.
+- The first admin: while there are no users, the first sign-in creates an admin with that email and password (temporary, in `AuthController.Login`). Admins add everyone else in **Settings → Users**.
 
 ## Route index
 
