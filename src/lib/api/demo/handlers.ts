@@ -352,6 +352,7 @@ function vendorItems(projectId: Id, filters?: ProjectFilters): (VendorListItem &
 
 // Vendor scores, the same formula as the backend's ScoringRepository (see VendorScore in types.ts).
 export const SCORE_MIX = { coverage: 0.7, satisfaction: 0.3 };
+const NEUTRAL_VOTES = 3; // every vendor starts with this many neutral votes, so one dislike doesn't sink it
 const groupWeight = (projectId: Id, group: RespondentGroup) =>
   db.groupWeights.find((w) => w.projectId === projectId && w.group === group)?.weight ?? 1;
 
@@ -382,11 +383,11 @@ function scoresFor(projectId: Id): VendorScore[] {
       const net = rows.reduce((t, r) => t + r.f.weight * (r.like - r.dislike), 0);
       const volume = rows.reduce((t, r) => t + r.f.weight * (r.like + r.dislike), 0);
       const coverage = totalDemand > 0 ? metDemand / totalDemand : 1;
-      const satisfaction = volume > 0 ? net / volume : 0;
+      const satisfaction = net / (volume + NEUTRAL_VOTES);
       // Points each feature adds on top of the neutral baseline.
       const points = (r: (typeof rows)[number]) =>
         (totalDemand > 0 && r.offers ? (100 * SCORE_MIX.coverage * r.f.weight * r.want) / totalDemand : 0) +
-        (volume > 0 ? (100 * (SCORE_MIX.satisfaction / 2) * r.f.weight * (r.like - r.dislike)) / volume : 0);
+        (100 * (SCORE_MIX.satisfaction / 2) * r.f.weight * (r.like - r.dislike)) / (volume + NEUTRAL_VOTES);
       const breakdown = rows
         .filter((r) => r.want > 0 || r.like > 0 || r.dislike > 0)
         .map((r) => ({

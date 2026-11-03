@@ -270,7 +270,7 @@ export type RereadResult = { queued: number }; // read again on the AI's next pa
 // GET /projects/:projectId/scores: vendors ranked by score.
 // Each like / dislike / want counts its group's weight; each feature counts its own weight.
 //   demand(f) = weighted wants for f;  coverage = share of weighted demand the vendor offers (0-1)
-//   satisfaction = (likes - dislikes) / (likes + dislikes) over its own feedback on features it offers (-1..1)
+//   satisfaction = (likes - dislikes) / (likes + dislikes + 3 neutral votes) over its own feedback on features it offers (-1..1)
 //   score = round(100 * (mix.coverage * coverage + mix.satisfaction * (satisfaction + 1) / 2))
 export type VendorScore = {
   vendor: { id: Id; name: string };

@@ -420,7 +420,7 @@ Used by: **Settings → Weights**, the Vendors page Score column and the vendor 
 |---|---|
 | demand(f) | sum of `gw` over f's wants, project-wide |
 | coverage(v) | `Σ fw·demand·offers / Σ fw·demand`, the share of weighted demand the vendor offers (1 when nothing is wanted) |
-| satisfaction(v) | `Σ fw·gw·(likes − dislikes) / Σ fw·gw·(likes + dislikes)` over the features v offers, from its own users (0 when there's none) |
+| satisfaction(v) | `Σ fw·gw·(likes − dislikes) / (Σ fw·gw·(likes + dislikes) + 3)` over the features v offers, from its own users. The `+ 3` is three neutral votes every vendor starts with: no feedback is 0, one dislike moves it a little, many dislikes move it toward −1, and weights matter even when a vendor has feedback on one feature. |
 | score(v) | `round(100 × (0.7 × coverage + 0.3 × (satisfaction + 1) / 2))`; `mix` in the response gives the 0.7 / 0.3 |
 
 Each `breakdown` line's `contribution` is the points that feature adds above the neutral baseline, e.g. offering the most-wanted feature adds the most, and a dislike takes points away. Scores ignore the date and group filters. `VendorListItem.score` is the same number, and `GET /vendors` sorts by it by default.

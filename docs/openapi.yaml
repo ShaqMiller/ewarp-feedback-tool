@@ -509,8 +509,8 @@ paths:
         Each like / dislike / want counts its group's weight (gw); each feature counts its own weight (fw).
           demand(f)       = sum of gw over f's wants, project-wide
           coverage(v)     = sum(fw * demand * offers) / sum(fw * demand); 1 when there is no demand
-          satisfaction(v) = sum(fw * gw * (likes - dislikes)) / sum(fw * gw * (likes + dislikes)) over the features v
-                            offers, counting only its own users' feedback; 0 when there is none
+          satisfaction(v) = sum(fw * gw * (likes - dislikes)) / (sum(fw * gw * (likes + dislikes)) + 3) over the features v
+                            offers, counting only its own users' feedback; the + 3 is three neutral votes every vendor starts with
           score(v)        = round(100 * (mix.coverage * coverage + mix.satisfaction * (satisfaction + 1) / 2))
         A breakdown line's `contribution` is the points that feature adds above the neutral baseline.
       responses:
