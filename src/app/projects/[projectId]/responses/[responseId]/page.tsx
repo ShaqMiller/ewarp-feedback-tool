@@ -53,7 +53,11 @@ export default async function ResponsePage({ params }: Props) {
       <main className="flex flex-col gap-5 px-4 py-5 sm:px-6 sm:py-[22px]">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-[22px] font-semibold tracking-[-0.015em]">Response from {GROUP_LABELS[response.group]}</h1>
-          <Pill tone={response.analyzed ? "like" : "accent"}>{response.analyzed ? "Read by AI" : "Waiting for AI"}</Pill>
+          {response.rereadQueued ? (
+            <Pill tone="accent">In queue for AI</Pill>
+          ) : (
+            <Pill tone={response.analyzed ? "like" : "accent"}>{response.analyzed ? "Read by AI" : "Waiting for AI"}</Pill>
+          )}
           <div className="ml-auto">
             <ShowInMapLink projectId={projectId} focusId={response.id} />
           </div>
@@ -85,10 +89,17 @@ export default async function ResponsePage({ params }: Props) {
                   ))}
                 </ul>
               )}
-              {me.role === "admin" && response.analyzed && (
-                <div className="mt-3 border-t border-line pt-3">
-                  <RereadButton projectId={projectId} responseId={response.id} label="Reread with AI" />
-                </div>
+              {response.rereadQueued ? (
+                <p role="status" className="mt-3 border-t border-line pt-3 text-xs text-muted">
+                  In the AI&apos;s queue. It reads this response again within about a minute; refresh to see new features.
+                </p>
+              ) : (
+                me.role === "admin" &&
+                response.analyzed && (
+                  <div className="mt-3 border-t border-line pt-3">
+                    <RereadButton projectId={projectId} responseId={response.id} label="Reread with AI" />
+                  </div>
+                )
               )}
             </Card>
             <Card title="Details">

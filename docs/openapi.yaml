@@ -1148,9 +1148,10 @@ components:
       allOf:
         - { $ref: "#/components/schemas/SurveyResponse" }
         - type: object
-          required: [survey, mentions]
+          required: [survey, mentions, rereadQueued]
           properties:
             survey: { $ref: "#/components/schemas/NamedRef" }
+            rereadQueued: { type: boolean, description: An admin asked the AI to read it again (POST /responses/reread) and it hasn't yet. }
             mentions:
               type: array
               items:

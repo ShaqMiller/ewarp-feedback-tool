@@ -13,7 +13,9 @@ export async function rereadAction(projectId: string, responseIds?: string[]): P
     ({ queued } = await api.rereadResponses(projectId, responseIds ? { responseIds } : {}));
   }, "");
   if (!result?.ok) return result;
-  if (queued === 0) return { ok: true, message: "Every response already has linked features." };
+  if (queued === 0) {
+    return { ok: true, message: responseIds ? "Already in the queue." : "Nothing to queue: every response has linked features or is already in the queue." };
+  }
   return {
     ok: true,
     message: `Queued ${plural(queued, "response")}. The AI reads ${queued === 1 ? "it" : "them"} again within about a minute; refresh to see new features.`,

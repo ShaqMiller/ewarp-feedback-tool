@@ -327,6 +327,7 @@ export type ResponseList = List<ResponseWithMentions> & {
 export type ResponseDetail = Omit<ResponseWithMentions, "mentions"> & {
   survey: { id: Id; name: string };
   mentions: (ResponseMention & { coverage: Coverage })[];
+  rereadQueued: boolean; // an admin asked the AI to read it again (POST /responses/reread) and it hasn't yet
 };
 
 // GET /projects/:projectId/surveys

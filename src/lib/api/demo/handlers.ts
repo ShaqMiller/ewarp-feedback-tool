@@ -282,6 +282,11 @@ function signalsFor(projectId: Id, filters: ProjectFilters = {}): Signal[] {
 const vendorIdsOf = (projectId: Id) => db.vendors.filter((v) => v.projectId === projectId).map((v) => v.id);
 const offeredBy = (featureId: Id) => db.offerings.filter((o) => o.featureId === featureId).map((o) => o.vendorId);
 
+// Responses an admin asked to reread, with when. Kept per server instance: it's only a demo of the "In queue" state.
+const DEMO_REREAD_MS = 60_000;
+const rereadQueue = new Map<Id, number>();
+const isQueued = (responseId: Id) => Date.now() - (rereadQueue.get(responseId) ?? 0) < DEMO_REREAD_MS;
+
 function coverageOf(featureId: Id, projectVendorIds: Id[]): Coverage {
   const count = offeredBy(featureId).filter((v) => projectVendorIds.includes(v)).length;
   if (count === 0) return "none";
@@ -939,22 +944,28 @@ export const demoApi: DemoApi = {
       ...rest,
       survey: { id: survey.id, name: survey.name },
       mentions: mentions.map((m) => ({ ...m, coverage: coverageOf(m.feature.id, vendorIds) })),
+      rereadQueued: isQueued(r.id),
     };
   },
 
-  // The demo has no AI to ask, so this only checks the request and counts what would be queued.
+  // The demo has no AI, so a queued response just leaves the queue after DEMO_REREAD_MS, with nothing new found.
   async rereadResponses(projectId, body = {}) {
     await sleep();
     projectOr404(projectId);
     const rs = db.responses.filter((r) => r.projectId === projectId);
     const ids = body?.responseIds;
-    if (ids === undefined) return { queued: rs.filter((r) => !db.mentions.some((m) => m.responseId === r.id)).length };
+    const queue = (list: Id[]) => {
+      const fresh = list.filter((id) => !isQueued(id));
+      for (const id of fresh) rereadQueue.set(id, Date.now());
+      return { queued: fresh.length };
+    };
+    if (ids === undefined) return queue(rs.filter((r) => !db.mentions.some((m) => m.responseId === r.id)).map((r) => r.id));
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500 || ids.some((id) => typeof id !== "string")) {
       throw new ApiError(400, "responseIds must have 1 to 500 response IDs.");
     }
     const unknown = ids.find((id) => !rs.some((r) => r.id === id));
     if (unknown) throw new ApiError(404, `Response ${unknown} not found in project ${projectId}`);
-    return { queued: new Set(ids).size };
+    return queue([...new Set(ids)]);
   },
 
   async listSurveys(projectId) {
