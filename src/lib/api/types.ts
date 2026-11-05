@@ -328,6 +328,9 @@ export type ResponseDetail = Omit<ResponseWithMentions, "mentions"> & {
   survey: { id: Id; name: string };
   mentions: (ResponseMention & { coverage: Coverage })[];
   rereadQueued: boolean; // an admin asked the AI to read it again (POST /responses/reread) and it hasn't yet
+  // The survey's other written answers, beyond likes / dislikes / wants (e.g. "If you rated X low, why?").
+  // Newer surveys keep most feedback here, and AI reads these too. Names and contact details are left out.
+  answers: { question: string; answer: string }[];
 };
 
 // GET /projects/:projectId/surveys

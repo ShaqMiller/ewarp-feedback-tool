@@ -483,6 +483,8 @@ Used by: the response page `/projects/:projectId/responses/:responseId`. It's op
 The shape is the same as a list item, plus:
 - `survey: { id, name }`
 - each mention's `coverage`, so the page can mark gaps
+- `rereadQueued`: an admin asked the AI to read it again and it hasn't yet
+- `answers: [{ question, answer }]`: the survey's other answers beyond likes / dislikes / wants, in the survey's order, without names or contact details. Newer surveys (the role-based one) keep most feedback here and leave likes / dislikes / wants empty; the AI reads these too, so such a response can still link features.
 
 Returns 404 if the response isn't in the project.
 

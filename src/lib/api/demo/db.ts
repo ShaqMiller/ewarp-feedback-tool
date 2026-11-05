@@ -27,6 +27,7 @@ export type ResponseRow = {
   wants: string;
   submittedAt: string;
   analyzedAt: string | null; // null until AI has read it
+  answers?: { question: string; answer: string }[]; // the survey's other answers (GET /responses/:id "answers")
 };
 export type MentionRow = { id: Id; responseId: Id; featureId: Id; kind: Sentiment };
 // A like / dislike / want an admin entered by hand. Counts everywhere a mention does.
@@ -127,7 +128,7 @@ const responseSeed: Record<Id, { surveyId: Id; rows: ResponseSeed[] }> = {
       { id: "rsp_4", group: "sponsor", vendorId: "vnd_3", daysAgo: 14, likes: "Support answers fast.", dislikes: "Pricing is unclear.", wants: "A clear audit log of who changed what.", mentions: [["ftr_12", "want"]] },
       { id: "rsp_5", group: "other", vendorId: "vnd_2", daysAgo: 12, likes: "Templates save a lot of time.", dislikes: "Hard to find older versions.", wants: "Version history with a compare view.", mentions: [["ftr_8", "like"], ["ftr_9", "want"]] },
       { id: "rsp_6", group: "other", vendorId: "vnd_3", daysAgo: 8, likes: "Works well offline.", dislikes: "Syncing is slow on large files.", wants: "Notifications only for things I own.", mentions: [["ftr_10", "like"], ["ftr_11", "dislike"], ["ftr_5", "want"]] },
-      { id: "rsp_7", group: "pm", vendorId: "vnd_3", daysAgo: 5, likes: "Simple timeline view.", dislikes: "Can't link tasks across projects.", wants: "Cross-project task links.", mentions: [["ftr_14", "like"], ["ftr_15", "want"]] },
+      { id: "rsp_7", group: "pm", vendorId: "vnd_3", daysAgo: 5, answers: [{ question: "How would you rate scheduling (1-5)?", answer: "2" }, { question: "If you rated scheduling low, why?", answer: "Moving one task doesn't move the tasks that depend on it." }], likes: "Simple timeline view.", dislikes: "Can't link tasks across projects.", wants: "Cross-project task links.", mentions: [["ftr_14", "like"], ["ftr_15", "want"]] },
       { id: "rsp_8", group: "pm", vendorId: "vnd_1", daysAgo: 1, likes: "Easy to share reports with my team. The dashboard helps too.", dislikes: "No bulk editing.", wants: "Bulk edit for many items at once.", mentions: [["ftr_16", "like"], ["ftr_1", "like"], ["ftr_13", "want"]] },
     ],
   },

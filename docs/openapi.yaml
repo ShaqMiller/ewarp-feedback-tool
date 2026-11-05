@@ -1148,8 +1148,18 @@ components:
       allOf:
         - { $ref: "#/components/schemas/SurveyResponse" }
         - type: object
-          required: [survey, mentions, rereadQueued]
+          required: [survey, mentions, rereadQueued, answers]
           properties:
+            answers:
+              type: array
+              description: >-
+                The survey's other answers, beyond likes / dislikes / wants (e.g. "If you rated X low, why?"), in the
+                survey's order. Names and contact details are left out. The AI reads these too, so a response with empty
+                likes / dislikes / wants can still link features.
+              items:
+                type: object
+                required: [question, answer]
+                properties: { question: { type: string }, answer: { type: string } }
             survey: { $ref: "#/components/schemas/NamedRef" }
             rereadQueued: { type: boolean, description: An admin asked the AI to read it again (POST /responses/reread) and it hasn't yet. }
             mentions:
