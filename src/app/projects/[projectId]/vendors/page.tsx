@@ -29,15 +29,20 @@ export default async function VendorsPage({ params }: PageProps<"/projects/[proj
                 : "No vendors in this project yet"}
             </p>
           </div>
-          {me.role === "admin" && (
+          {(me.role === "admin" || vendors >= 2) && (
             <div className="flex flex-wrap gap-2">
-              <Link href={`/projects/${project.id}/settings/weights`} className={linkClass}>
-                Scoring weights
-              </Link>
-              <Link href={`/projects/${project.id}/settings/vendors`} className={linkClass}>
-                <GearIcon className="size-3.5 text-muted" />
-                Manage vendors
-              </Link>
+              {vendors >= 2 && <Link href={`/projects/${project.id}/vendors/compare`} className={linkClass}>Compare vendors</Link>}
+              {me.role === "admin" && (
+                <>
+                  <Link href={`/projects/${project.id}/settings/weights`} className={linkClass}>
+                    Scoring weights
+                  </Link>
+                  <Link href={`/projects/${project.id}/settings/vendors`} className={linkClass}>
+                    <GearIcon className="size-3.5 text-muted" />
+                    Manage vendors
+                  </Link>
+                </>
+              )}
             </div>
           )}
         </div>
