@@ -27,6 +27,7 @@ export default async function ResponsePage({ params }: Props) {
     api.getMe(),
   ]);
   const kinds = [...new Set(response.mentions.map((m) => m.kind))];
+  const answers = response.answers ?? []; // older backends don't send them
   const details = [
     { label: "Vendor", value: <Link href={`/projects/${projectId}/vendors/${response.vendor.id}`} className="font-medium hover:underline">{response.vendor.name}</Link> },
     { label: "Group", value: GROUP_LABELS[response.group] },
@@ -64,7 +65,22 @@ export default async function ResponsePage({ params }: Props) {
         </div>
 
         <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
-          <ResponseCard response={response} projectId={projectId} highlight={kinds} showVendor={false} linked={false} />
+          <div className="grid gap-4">
+            <ResponseCard response={response} projectId={projectId} highlight={kinds} showVendor={false} linked={false} />
+            {answers.length > 0 && (
+              <Card title="Other answers">
+                <p className="-mt-1 mb-3 text-xs text-muted">The rest of this survey. AI reads these too when it links features.</p>
+                <dl className="grid gap-3 text-[13px]">
+                  {answers.map((a, i) => (
+                    <div key={i}>
+                      <dt className="text-xs text-muted">{a.question}</dt>
+                      <dd className="mt-0.5 whitespace-pre-line">{a.answer}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Card>
+            )}
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
             <Card title="Linked features">
               {response.mentions.length === 0 ? (

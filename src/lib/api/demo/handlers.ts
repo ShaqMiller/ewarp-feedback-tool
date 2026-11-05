@@ -949,6 +949,7 @@ export const demoApi: DemoApi = {
       survey: { id: survey.id, name: survey.name },
       mentions: mentions.map((m) => ({ ...m, coverage: coverageOf(m.feature.id, vendorIds) })),
       rereadQueued: isQueued(r.id),
+      answers: r.answers ?? [],
     };
   },
 
