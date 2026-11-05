@@ -18,6 +18,7 @@ import type {
   UserUpdate,
   VendorCreate,
   VendorUpdate,
+  SurveyUpdate,
   WeightsUpdate,
 } from "@/lib/api/types";
 
@@ -41,6 +42,12 @@ class Query {
     const n = Number(v);
     if (!Number.isInteger(n) || n < min || n > max) throw new BadRequest(`${name} must be an integer from ${min} to ${max}`);
     return n;
+  }
+  bool(name: string) {
+    const v = this.str(name);
+    if (v === undefined) return undefined;
+    if (v !== "true" && v !== "false") throw new BadRequest(`${name} must be true or false`);
+    return v === "true";
   }
   oneOf<T extends string>(name: string, values: readonly T[]) {
     const v = this.str(name);
@@ -129,12 +136,13 @@ const ROUTES: [string, Handler][] = [
         sort: q.oneOf("sort", ["newest", "oldest"] as const),
         limit: q.int("limit", 1, 500),
         offset: q.int("offset", 0, Number.MAX_SAFE_INTEGER),
+        includeExcluded: q.bool("includeExcluded"),
         ...q.filters(),
       }),
   ],
   ["projects/:projectId/weights", (api, p) => api.getWeights(p.projectId)],
   ["projects/:projectId/scores", (api, p) => api.getScores(p.projectId)],
-  ["projects/:projectId/responses/:responseId", (api, p) => api.getResponse(p.projectId, p.responseId)],
+  ["projects/:projectId/responses/:responseId", (api, p, q) => api.getResponse(p.projectId, p.responseId, { includeExcluded: q.bool("includeExcluded") })],
   ["projects/:projectId/surveys", (api, p) => api.listSurveys(p.projectId)],
   ["projects/:projectId/graph", (api, p, q) => api.getGraph(p.projectId, q.filters())],
   ["projects/:projectId/activity", (api, p, q) => api.listActivity(p.projectId, { limit: q.int("limit", 1, 100) })],
@@ -149,6 +157,7 @@ const WRITE_ROUTES: [method: string, pattern: string, status: number, handler: W
   ["DELETE", "users/:userId", 204, (api, p) => api.deleteUser(p.userId)],
   ["POST", "projects/:projectId/vendors", 201, (api, p, body) => api.createVendor(p.projectId, body as VendorCreate)],
   ["PATCH", "projects/:projectId/vendors/:vendorId", 200, (api, p, body) => api.updateVendor(p.projectId, p.vendorId, body as VendorUpdate)],
+  ["PATCH", "projects/:projectId/surveys/:surveyId", 200, (api, p, body) => api.updateSurvey(p.projectId, p.surveyId, body as SurveyUpdate)],
   ["DELETE", "projects/:projectId/vendors/:vendorId", 204, (api, p) => api.deleteVendor(p.projectId, p.vendorId)],
   ["POST", "projects/:projectId/features", 201, (api, p, body) => api.createFeature(p.projectId, body as FeatureCreate)],
   ["PATCH", "projects/:projectId/features/:featureId", 200, (api, p, body) => api.updateFeature(p.projectId, p.featureId, body as FeatureUpdate)],

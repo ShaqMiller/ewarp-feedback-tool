@@ -38,11 +38,12 @@ export async function ResponseList({ projectId, query }: { projectId: string; qu
     sort: query.sort,
     limit: PAGE_SIZE,
     offset: (query.page - 1) * PAGE_SIZE,
+    includeExcluded: query.includeExcluded || undefined,
   });
   const groupTotal = GROUPS.reduce((n, g) => n + facets.group[g], 0);
   const first = (query.page - 1) * PAGE_SIZE + 1;
   const last = first + items.length - 1;
-  const filtered = Boolean(query.group || query.vendor || query.survey || query.status || query.q);
+  const filtered = Boolean(query.group || query.vendor || query.survey || query.status || query.q || query.includeExcluded);
 
   const chips = [
     { label: "All groups", href: responsesHref(base, query, { group: undefined }), active: !query.group, count: groupTotal },
@@ -92,7 +93,7 @@ export async function ResponseList({ projectId, query }: { projectId: string; qu
           <ul className="grid gap-3">
             {items.map((r) => (
               <li key={r.id}>
-                <ResponseCard response={r} projectId={projectId} mentions={r.mentions} />
+                <ResponseCard response={r} projectId={projectId} mentions={r.mentions} includeExcluded={query.includeExcluded} />
               </li>
             ))}
           </ul>
