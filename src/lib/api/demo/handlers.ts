@@ -953,6 +953,31 @@ export const demoApi: DemoApi = {
     };
   },
 
+  // Same as the backend: clears the project's survey data, keeps the project, vendors, surveys, users and weights.
+  async resetProject(projectId, body) {
+    await sleep();
+    const project = projectOr404(projectId);
+    if (typeof body?.confirm !== "string" || body.confirm.trim() !== project.name.trim()) {
+      throw new ApiError(400, `Type the project name exactly ("${project.name}") to confirm.`);
+    }
+    const featureIds = new Set(db.features.filter((f) => f.projectId === projectId).map((f) => f.id));
+    const responseIds = new Set(db.responses.filter((r) => r.projectId === projectId).map((r) => r.id));
+    const vendorIds = new Set(vendorIdsOf(projectId));
+    const removeWhere = <T,>(rows: T[], match: (row: T) => boolean) => {
+      const before = rows.length;
+      for (let i = rows.length - 1; i >= 0; i--) if (match(rows[i])) rows.splice(i, 1);
+      return before - rows.length;
+    };
+    removeWhere(db.mentions, (m) => responseIds.has(m.responseId) || featureIds.has(m.featureId));
+    removeWhere(db.feedback, (e) => e.projectId === projectId);
+    removeWhere(db.offerings, (o) => featureIds.has(o.featureId));
+    for (const id of featureIds) delete db.featureSummaries[id];
+    for (const id of vendorIds) delete db.vendorSummaries[id];
+    const responses = removeWhere(db.responses, (r) => r.projectId === projectId);
+    const features = removeWhere(db.features, (f) => f.projectId === projectId);
+    return { responses, features };
+  },
+
   // The demo has no AI, so a queued response just leaves the queue after DEMO_REREAD_MS, with nothing new found.
   async rereadResponses(projectId, body = {}) {
     await sleep();
@@ -1073,6 +1098,7 @@ const ADMIN_ONLY = new Set<string>([
   "deleteFeatureFeedback",
   "updateWeights",
   "rereadResponses",
+  "resetProject",
 ]);
 
 export function demoApiFor(token: string | undefined): FeedbackApi {

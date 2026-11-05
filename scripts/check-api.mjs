@@ -234,6 +234,7 @@ if (!project) {
       await expectStatus(`POST ${p}/features as viewer → 403`, () => send("POST", `${p}/features`, { name: "Viewer test" }, as), 403);
       await expectStatus(`PUT ${p}/weights as viewer → 403`, () => send("PUT", `${p}/weights`, { groups: [{ key: "pm", weight: 1 }] }, as), 403);
       await expectStatus(`POST ${p}/responses/reread as viewer → 403`, () => send("POST", `${p}/responses/reread`, {}, as), 403);
+      await expectStatus(`POST ${p}/reset as viewer → 403`, () => send("POST", `${p}/reset`, { confirm: "x" }, as), 403);
     }
   } else {
     console.log(color(2, "\nViewer checks skipped. Set EWARP_VIEWER_EMAIL and EWARP_VIEWER_PASSWORD to check that viewers get 403."));
@@ -344,6 +345,11 @@ async function checkWrites(p, featureId, vendorId, weights) {
   console.log("\nReread with AI (bad requests only)\n");
   await expect("POST", `${p}/responses/reread`, { responseIds: [] }, 400, "Error");
   await expect("POST", `${p}/responses/reread`, { responseIds: ["__missing__"] }, 404, "Error");
+
+  // Never a real reset: that deletes the project's data. Only a wrong name, which must change nothing.
+  console.log("\nReset (wrong confirmation only)\n");
+  await expect("POST", `${p}/reset`, { confirm: "__not the project name__" }, 400, "Error");
+  await expect("POST", `${p}/reset`, {}, 400, "Error");
 
   console.log("\nUser writes (temporary user)\n");
   const email = `contract-check-${Date.now()}@example.com`;

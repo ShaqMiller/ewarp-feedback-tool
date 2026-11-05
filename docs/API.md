@@ -36,7 +36,7 @@ People sign in with email and password. `POST /auth/login` returns a token; the 
 
 ## Route index
 
-There are 42 routes: 28 reads (`GET`) and 14 writes. Writes are admin only. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
+There are 43 routes: 28 reads (`GET`) and 15 writes. Writes are admin only. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
 
 | Route | Query params | Returns | Used by |
 |---|---|---|---|
@@ -73,6 +73,7 @@ There are 42 routes: 28 reads (`GET`) and 14 writes. Writes are admin only. Path
 | `/projects/:projectId/vendors/:vendorId/features` | filters | `{ items: VendorFeature[], total }` | Vendor page |
 | `/projects/:projectId/vendors/:vendorId/responses` | `limit`, filters | `{ items: ResponseWithMentions[], total }` | Vendor page, Responses tab |
 | `/projects/:projectId/responses` | `vendorId`, `surveyId`, `status`, `q`, `sort`, `limit`, `offset`, filters | `{ items, total, facets }` | Responses page |
+| **`POST`** `/projects/:projectId/reset` | body `{ confirm }` | `200` `{ responses, features }` (admin) | Settings → Reset |
 | **`POST`** `/projects/:projectId/responses/reread` | body `{ responseIds? }` | `202` `{ queued }` (admin) | "Reread with AI" on the response page and Surveys page |
 | `/projects/:projectId/responses/:responseId` | | `ResponseDetail` | Response page |
 | `/projects/:projectId/surveys` | | `{ items: Survey[], total }` | Surveys page |
@@ -469,6 +470,11 @@ Each item is the response shape with `mentions` (same as the vendor responses en
   }
 }
 ```
+
+### `POST /projects/:projectId/reset`
+Used by: **Settings → Reset**. Admin only, and it can't be undone.
+
+Body `{ "confirm": "<the project's exact name>" }`; anything else is `400` and changes nothing. In one transaction it deletes the project's responses and their raw survey submissions (including ones for its forms that were never imported, so editing a vendor doesn't bring them back), mentions, features, manual feedback, vendor offerings, AI summaries and the activity feed. It keeps the project, vendors, survey forms (new submissions still arrive), users and group weights. Returns `200 { "responses": n, "features": n }`. If any step fails, nothing is deleted.
 
 ### `POST /projects/:projectId/responses/reread`
 Used by: **Reread with AI** on the response page and **Reread responses with no features** on the Surveys page. Admin only.

@@ -267,6 +267,12 @@ export type WeightsUpdate = {
 export type RereadRequest = { responseIds?: Id[] };
 export type RereadResult = { queued: number }; // read again on the AI's next pass, within about a minute
 
+// POST /projects/:projectId/reset (admin): delete the project's survey data for a clean start. Can't be undone.
+// Deletes responses (and their raw submissions), features, AI links, manual feedback, offerings, AI summaries and
+// activity. Keeps the project, vendors, survey forms, users and group weights. confirm must be the project's exact name.
+export type ProjectResetRequest = { confirm: string };
+export type ProjectResetResult = { responses: number; features: number }; // how many were deleted
+
 // GET /projects/:projectId/scores: vendors ranked by score.
 // Each like / dislike / want counts its group's weight; each feature counts its own weight.
 //   demand(f) = weighted wants for f;  coverage = share of weighted demand the vendor offers (0-1)

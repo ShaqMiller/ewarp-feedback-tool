@@ -29,6 +29,8 @@ import type {
   Id,
   LoginRequest,
   RelatedFeature,
+  ProjectResetRequest,
+  ProjectResetResult,
   RereadRequest,
   RereadResult,
   Sentiment,
@@ -128,6 +130,7 @@ export type FeedbackApi = {
   listResponses(projectId: Id, query?: ResponseQuery): Promise<ResponseList>;
   getResponse(projectId: Id, responseId: Id): Promise<ResponseDetail>;
   rereadResponses(projectId: Id, body?: RereadRequest): Promise<RereadResult>;
+  resetProject(projectId: Id, body: ProjectResetRequest): Promise<ProjectResetResult>;
   listSurveys(projectId: Id): Promise<List<Survey>>;
   getGraph(projectId: Id, filters?: ProjectFilters): Promise<ProjectGraph>;
   listActivity(projectId: Id, query?: { limit?: number }): Promise<List<ActivityEvent>>;
@@ -213,6 +216,7 @@ export const api: FeedbackApi = {
   deleteVendor: forward("deleteVendor"),
   updateWeights: forward("updateWeights"),
   rereadResponses: forward("rereadResponses"),
+  resetProject: forward("resetProject"),
 };
 
 // Turns a 404 from the API into the route's not-found page.

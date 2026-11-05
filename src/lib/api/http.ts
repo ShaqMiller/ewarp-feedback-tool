@@ -77,6 +77,7 @@ function client(baseUrl: string, headers: Record<string, string>): FeedbackApi {
     listResponses: (projectId, query) => get(`${p(projectId)}/responses`, query),
     getResponse: (projectId, responseId) => get(`${p(projectId)}/responses/${encodeURIComponent(responseId)}`),
     rereadResponses: (projectId, body = {}) => request("POST", `${p(projectId)}/responses/reread`, { body }),
+    resetProject: (projectId, body) => request("POST", `${p(projectId)}/reset`, { body }),
     listSurveys: (projectId) => get(`${p(projectId)}/surveys`),
     getGraph: (projectId, filters) => get(`${p(projectId)}/graph`, filters),
     listActivity: (projectId, query) => get(`${p(projectId)}/activity`, query),

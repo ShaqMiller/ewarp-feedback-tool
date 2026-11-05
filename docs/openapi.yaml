@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: eWARP Feedback API
-  version: 1.4.0
+  version: 1.5.0
   description: |
     The contract between the eWARP front end and its backend.
 
@@ -543,6 +543,25 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/Error" }
 
+  /projects/{projectId}/reset:
+    parameters: [{ $ref: "#/components/parameters/projectId" }]
+    post:
+      operationId: resetProject
+      summary: Delete the project's survey data for a clean start (admin only, can't be undone)
+      description: >-
+        Used by: Settings → Reset. In one transaction, deletes the project's responses and their raw survey submissions
+        (including unimported ones for its forms), mentions, features, manual feedback, vendor offerings, AI summaries and
+        activity. Keeps the project, vendors, survey forms, users and group weights. confirm must equal the project's name.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ProjectResetRequest" } } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/ProjectResetResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+
   /projects/{projectId}/responses/reread:
     parameters: [{ $ref: "#/components/parameters/projectId" }]
     post:
@@ -927,6 +946,16 @@ components:
               name: { type: string }
               source: { $ref: "#/components/schemas/FeatureSource" }
               weight: { $ref: "#/components/schemas/Weight" }
+    ProjectResetRequest:
+      type: object
+      required: [confirm]
+      properties: { confirm: { type: string, description: "The project's exact name." } }
+    ProjectResetResult:
+      type: object
+      required: [responses, features]
+      properties:
+        responses: { type: integer, minimum: 0 }
+        features: { type: integer, minimum: 0 }
     RereadRequest:
       type: object
       properties:

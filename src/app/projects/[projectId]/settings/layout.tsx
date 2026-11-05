@@ -27,6 +27,7 @@ export default async function SettingsLayout({ children, params }: LayoutProps<"
                 { segment: "weights", label: "Weights" },
                 { segment: "users", label: "Users" },
                 { segment: "data", label: "Data source" },
+                { segment: "reset", label: "Reset" },
               ]}
             />
           )}
