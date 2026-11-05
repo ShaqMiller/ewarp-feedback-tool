@@ -345,6 +345,10 @@ export type Survey = {
   name: string;
   source: "google_forms";
   status: "collecting" | "closed";
+  includedInAnalysis: boolean;
+  exclusionReason: string | null;
+  excludedAt: string | null;
+  excludedBy: { id: Id; name: string } | null;
   createdAt: string;
   responseCount: number;
   analyzedCount: number; // responses AI has read
@@ -352,6 +356,11 @@ export type Survey = {
   lastResponseAt: string | null;
   groups: Record<Group, number>;
 };
+
+// PATCH /projects/:projectId/surveys/:surveyId (admin). Excluding a survey requires an audit reason.
+export type SurveyUpdate =
+  | { includedInAnalysis: true }
+  | { includedInAnalysis: false; exclusionReason: string };
 
 // GET /projects/:projectId/graph
 // Everything the relationship map draws, in one request: it's the one view that needs every node at once.

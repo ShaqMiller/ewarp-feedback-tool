@@ -19,11 +19,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 // Uses GET /projects/:projectId and /responses/:responseId; admins can POST /responses/reread
-export default async function ResponsePage({ params }: Props) {
+export default async function ResponsePage({ params, searchParams }: Props) {
   const { projectId, responseId } = await params;
+  const includeExcluded = (await searchParams).includeExcluded === "true";
   const [project, response, me] = await Promise.all([
     orNotFound(api.getProject(projectId)),
-    orNotFound(api.getResponse(projectId, responseId)),
+    orNotFound(api.getResponse(projectId, responseId, { includeExcluded })),
     api.getMe(),
   ]);
   const kinds = [...new Set(response.mentions.map((m) => m.kind))];
@@ -35,7 +36,7 @@ export default async function ResponsePage({ params }: Props) {
     {
       label: "Survey",
       value: (
-        <Link href={`/projects/${projectId}/responses?survey=${response.survey.id}`} className="font-medium hover:underline">
+        <Link href={`/projects/${projectId}/responses?survey=${response.survey.id}${includeExcluded ? "&includeExcluded=true" : ""}`} className="font-medium hover:underline">
           {response.survey.name}
         </Link>
       ),

@@ -58,6 +58,7 @@ import type {
   ResponseStatus,
   ResponseWithMentions,
   Survey,
+  SurveyUpdate,
   VendorSort,
   Weights,
   WeightsUpdate,
@@ -78,6 +79,7 @@ export type ResponseQuery = ProjectFilters & {
   sort?: ResponseSort;
   limit?: number;
   offset?: number;
+  includeExcluded?: boolean; // admin audit view only
 };
 
 export type FeedbackApi = {
@@ -128,10 +130,11 @@ export type FeedbackApi = {
   updateWeights(projectId: Id, body: WeightsUpdate): Promise<Weights>;
   getScores(projectId: Id): Promise<VendorScoreList>;
   listResponses(projectId: Id, query?: ResponseQuery): Promise<ResponseList>;
-  getResponse(projectId: Id, responseId: Id): Promise<ResponseDetail>;
+  getResponse(projectId: Id, responseId: Id, query?: { includeExcluded?: boolean }): Promise<ResponseDetail>;
   rereadResponses(projectId: Id, body?: RereadRequest): Promise<RereadResult>;
   resetProject(projectId: Id, body: ProjectResetRequest): Promise<ProjectResetResult>;
   listSurveys(projectId: Id): Promise<List<Survey>>;
+  updateSurvey(projectId: Id, surveyId: Id, body: SurveyUpdate): Promise<Survey>;
   getGraph(projectId: Id, filters?: ProjectFilters): Promise<ProjectGraph>;
   listActivity(projectId: Id, query?: { limit?: number }): Promise<List<ActivityEvent>>;
 };
@@ -217,6 +220,7 @@ export const api: FeedbackApi = {
   updateWeights: forward("updateWeights"),
   rereadResponses: forward("rereadResponses"),
   resetProject: forward("resetProject"),
+  updateSurvey: forward("updateSurvey"),
 };
 
 // Turns a 404 from the API into the route's not-found page.

@@ -28,7 +28,7 @@ export default async function SurveysPage({ params }: PageProps<"/projects/[proj
           )}
         </div>
         <AsyncSlot title="Surveys" fallback={<SurveyListSkeleton />}>
-          <SurveyList projectId={projectId} />
+          <SurveyList projectId={projectId} admin={me.role === "admin"} />
         </AsyncSlot>
       </main>
     </>

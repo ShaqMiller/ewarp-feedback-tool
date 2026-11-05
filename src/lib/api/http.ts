@@ -3,7 +3,7 @@
 import { ApiError } from "./errors";
 import type { FeedbackApi } from "./index";
 
-type Query = Record<string, string | number | undefined>;
+type Query = Record<string, string | number | boolean | undefined>;
 
 // Returns the API as one user: `token` (from POST /auth/login) is sent as "Authorization: Bearer <token>".
 function createHttpApi(baseUrl: string): (token?: string) => FeedbackApi {
@@ -35,6 +35,7 @@ function client(baseUrl: string, headers: Record<string, string>): FeedbackApi {
   const p = (projectId: string) => `/projects/${encodeURIComponent(projectId)}`;
   const v = (projectId: string, vendorId: string) => `${p(projectId)}/vendors/${encodeURIComponent(vendorId)}`;
   const f = (projectId: string, featureId: string) => `${p(projectId)}/features/${encodeURIComponent(featureId)}`;
+  const s = (projectId: string, surveyId: string) => `${p(projectId)}/surveys/${encodeURIComponent(surveyId)}`;
   const u = (userId: string) => `/users/${encodeURIComponent(userId)}`;
 
   return {
@@ -75,10 +76,11 @@ function client(baseUrl: string, headers: Record<string, string>): FeedbackApi {
     updateWeights: (projectId, body) => request("PUT", `${p(projectId)}/weights`, { body }),
     getScores: (projectId) => get(`${p(projectId)}/scores`),
     listResponses: (projectId, query) => get(`${p(projectId)}/responses`, query),
-    getResponse: (projectId, responseId) => get(`${p(projectId)}/responses/${encodeURIComponent(responseId)}`),
+    getResponse: (projectId, responseId, query) => get(`${p(projectId)}/responses/${encodeURIComponent(responseId)}`, query),
     rereadResponses: (projectId, body = {}) => request("POST", `${p(projectId)}/responses/reread`, { body }),
     resetProject: (projectId, body) => request("POST", `${p(projectId)}/reset`, { body }),
     listSurveys: (projectId) => get(`${p(projectId)}/surveys`),
+    updateSurvey: (projectId, surveyId, body) => request("PATCH", s(projectId, surveyId), { body }),
     getGraph: (projectId, filters) => get(`${p(projectId)}/graph`, filters),
     listActivity: (projectId, query) => get(`${p(projectId)}/activity`, query),
   };

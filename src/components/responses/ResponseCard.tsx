@@ -30,6 +30,7 @@ export function ResponseCard({
   mentions,
   showVendor = true,
   linked = true,
+  includeExcluded = false,
 }: {
   response: SurveyResponse;
   projectId: string;
@@ -37,13 +38,14 @@ export function ResponseCard({
   mentions?: ResponseMention[];
   showVendor?: boolean;
   linked?: boolean;
+  includeExcluded?: boolean;
 }) {
   return (
     <article className="rounded-[10px] border border-line bg-surface p-4">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
         {linked ? (
           <Link
-            href={`/projects/${projectId}/responses/${response.id}`}
+            href={`/projects/${projectId}/responses/${response.id}${includeExcluded ? "?includeExcluded=true" : ""}`}
             className="rounded font-semibold text-ink hover:underline"
           >
             {GROUP_LABELS[response.group]}

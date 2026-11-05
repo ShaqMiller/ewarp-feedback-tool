@@ -36,7 +36,7 @@ People sign in with email and password. `POST /auth/login` returns a token; the 
 
 ## Route index
 
-There are 43 routes: 28 reads (`GET`) and 15 writes. Writes are admin only. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
+There are 44 routes: 28 reads (`GET`) and 16 writes. Writes are admin only. Paths are relative to the base URL (e.g. `https://your-api/api/v1`). "Filters" means the route accepts `from`, `to` and `group` (see Conventions).
 
 | Route | Query params | Returns | Used by |
 |---|---|---|---|
@@ -72,11 +72,12 @@ There are 43 routes: 28 reads (`GET`) and 15 writes. Writes are admin only. Path
 | `/projects/:projectId/vendors/:vendorId/requests` | filters | `{ items: VendorRequest[], total }` | Vendor page |
 | `/projects/:projectId/vendors/:vendorId/features` | filters | `{ items: VendorFeature[], total }` | Vendor page |
 | `/projects/:projectId/vendors/:vendorId/responses` | `limit`, filters | `{ items: ResponseWithMentions[], total }` | Vendor page, Responses tab |
-| `/projects/:projectId/responses` | `vendorId`, `surveyId`, `status`, `q`, `sort`, `limit`, `offset`, filters | `{ items, total, facets }` | Responses page |
+| `/projects/:projectId/responses` | `vendorId`, `surveyId`, `includeExcluded`, `status`, `q`, `sort`, `limit`, `offset`, filters | `{ items, total, facets }` | Responses page |
 | **`POST`** `/projects/:projectId/reset` | body `{ confirm }` | `200` `{ responses, features }` (admin) | Settings → Reset |
 | **`POST`** `/projects/:projectId/responses/reread` | body `{ responseIds? }` | `202` `{ queued }` (admin) | "Reread with AI" on the response page and Surveys page |
 | `/projects/:projectId/responses/:responseId` | | `ResponseDetail` | Response page |
 | `/projects/:projectId/surveys` | | `{ items: Survey[], total }` | Surveys page |
+| **`PATCH`** `/projects/:projectId/surveys/:surveyId` | body `{ includedInAnalysis, exclusionReason? }` | `200` `Survey` | Exclude or restore a survey (admin) |
 | `/projects/:projectId/weights` | | `Weights` | Settings → Weights |
 | **`PUT`** `/projects/:projectId/weights` | body `{ groups?, features? }` | `200` `Weights` | Settings → Weights |
 | `/projects/:projectId/scores` | | `{ items: VendorScore[], total, mix }` | Vendor page "Score" |
@@ -486,6 +487,8 @@ The classifier keeps its own list of responses it has read, so it never reads on
 ### `GET /projects/:projectId/responses/:responseId`
 Used by: the response page `/projects/:projectId/responses/:responseId`. It's opened from any response card's group name, or from the map's "Open response" button.
 
+Responses from excluded surveys return 404 by default. An admin audit view may request `?includeExcluded=true`.
+
 The shape is the same as a list item, plus:
 - `survey: { id, name }`
 - each mention's `coverage`, so the page can mark gaps
@@ -504,6 +507,10 @@ Used by: the Surveys page (one card per survey) and the Responses page (the surv
       "name": "Platform feedback",
       "source": "google_forms",
       "status": "collecting",
+      "includedInAnalysis": true,
+      "exclusionReason": null,
+      "excludedAt": null,
+      "excludedBy": null,
       "createdAt": "2026-09-20T12:00:00.000Z",
       "responseCount": 8,
       "analyzedCount": 8,
@@ -518,6 +525,9 @@ Used by: the Surveys page (one card per survey) and the Responses page (the surv
 - `source` is `google_forms` for now. Add values as more survey tools are connected.
 - `status` is `collecting` or `closed`.
 - `vendorCount` is how many distinct vendors the survey's responses are about.
+
+### `PATCH /projects/:projectId/surveys/:surveyId`
+Admin only. Set `includedInAnalysis` to `false` to exclude all of the survey's responses from calculations while retaining them for audit. Include a non-blank `exclusionReason` (up to 1,000 characters). Set it back to `true` to restore the survey. The response is the updated `Survey`, including the exclusion audit metadata.
 
 ### `GET /projects/:projectId/graph`
 Used by: the Relationship map, where `group` comes from its chips.

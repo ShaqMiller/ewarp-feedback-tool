@@ -23,6 +23,7 @@ export type ResponsePageQuery = {
   q: string;
   sort: ResponseSort;
   page: number;
+  includeExcluded: boolean;
 };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -39,6 +40,7 @@ export function parseResponseQuery(sp: Record<string, string | string[] | undefi
     q: first(sp.q)?.slice(0, 100) ?? "",
     sort: first(sp.sort) === "oldest" ? "oldest" : "newest",
     page: Number.isInteger(page) && page > 1 ? page : 1,
+    includeExcluded: first(sp.includeExcluded) === "true",
   };
 }
 
@@ -53,5 +55,6 @@ export function responsesHref(base: string, query: ResponsePageQuery, patch: Par
   if (next.q) params.set("q", next.q);
   if (next.sort !== "newest") params.set("sort", next.sort);
   if (next.page > 1) params.set("page", String(next.page));
+  if (next.includeExcluded) params.set("includeExcluded", "true");
   return params.size ? `${base}?${params}` : base;
 }

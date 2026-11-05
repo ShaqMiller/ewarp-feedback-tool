@@ -29,6 +29,7 @@ import {
   type FeatureCreate,
   type VendorListItem,
   type VendorScore,
+  type SurveyUpdate,
 } from "../types";
 import * as db from "./db";
 
@@ -64,6 +65,13 @@ function vendorOr404(projectId: Id, vendorId: Id) {
   const vendor = db.vendors.find((v) => v.id === vendorId && v.projectId === projectId);
   if (!vendor) throw new ApiError(404, `Vendor ${vendorId} not found in project ${projectId}`);
   return vendor;
+}
+
+function surveyOr404(projectId: Id, surveyId: Id) {
+  projectOr404(projectId);
+  const survey = db.surveys.find((s) => s.id === surveyId && s.projectId === projectId);
+  if (!survey) throw new ApiError(404, `Survey ${surveyId} not found in project ${projectId}`);
+  return survey;
 }
 
 // Write validation. The rules match docs/openapi.yaml; messages are shown to people as-is.
@@ -243,12 +251,12 @@ function withMentions(r: db.ResponseRow): ResponseWithMentions {
   };
 }
 
-function responsesFor(projectId: Id, filters: ProjectFilters = {}) {
+function responsesFor(projectId: Id, filters: ProjectFilters = {}, includeExcluded = false) {
   const from = filters.from ? Date.parse(filters.from) : -Infinity;
   const to = filters.to ? Date.parse(filters.to) + DAY : Infinity; // `to` is inclusive
   return db.responses.filter((r) => {
     const t = Date.parse(r.submittedAt);
-    return r.projectId === projectId && t >= from && t < to && (!filters.group || r.group === filters.group);
+    return r.projectId === projectId && (includeExcluded || db.surveys.some((s) => s.id === r.surveyId && s.includedInAnalysis)) && t >= from && t < to && (!filters.group || r.group === filters.group);
   });
 }
 
@@ -908,12 +916,12 @@ export const demoApi: DemoApi = {
     return { items: limit ? all.slice(0, limit) : all, total: all.length };
   },
 
-  async listResponses(projectId, { vendorId, surveyId, status, q, sort = "newest", limit, offset = 0, group, ...filters } = {}) {
+  async listResponses(projectId, { vendorId, surveyId, status, q, sort = "newest", limit, offset = 0, group, includeExcluded = false, ...filters } = {}) {
     await sleep();
     projectOr404(projectId);
     const term = q?.trim().toLowerCase();
     // Everything except group and status, so the chips can count each option.
-    const base = responsesFor(projectId, filters).filter(
+    const base = responsesFor(projectId, filters, includeExcluded).filter(
       (r) =>
         (!vendorId || r.vendorId === vendorId) &&
         (!surveyId || r.surveyId === surveyId) &&
@@ -936,12 +944,13 @@ export const demoApi: DemoApi = {
     return { items: page.map(withMentions), total: matches.length, facets };
   },
 
-  async getResponse(projectId, responseId) {
+  async getResponse(projectId, responseId, { includeExcluded = false } = {}) {
     await sleep();
     projectOr404(projectId);
     const r = db.responses.find((r) => r.id === responseId && r.projectId === projectId);
     if (!r) throw new ApiError(404, `Response ${responseId} not found in project ${projectId}`);
     const survey = db.surveys.find((s) => s.id === r.surveyId)!;
+    if (!includeExcluded && !survey.includedInAnalysis) throw new ApiError(404, `Response ${responseId} not found in project ${projectId}`);
     const vendorIds = vendorIdsOf(projectId);
     const { mentions, ...rest } = withMentions(r);
     return {
@@ -982,7 +991,7 @@ export const demoApi: DemoApi = {
   async rereadResponses(projectId, body = {}) {
     await sleep();
     projectOr404(projectId);
-    const rs = db.responses.filter((r) => r.projectId === projectId);
+    const rs = responsesFor(projectId);
     const ids = body?.responseIds;
     const queue = (list: Id[]) => {
       const fresh = list.filter((id) => !isQueued(id));
@@ -1005,6 +1014,7 @@ export const demoApi: DemoApi = {
       .filter((s) => s.projectId === projectId)
       .map((s) => {
         const rs = db.responses.filter((r) => r.surveyId === s.id);
+        const excludedBy = s.excludedBy ? db.users.find((u) => u.id === s.excludedBy) : undefined;
         const groups = emptyGroups();
         for (const r of rs) groups[r.group] += 1;
         return {
@@ -1012,6 +1022,10 @@ export const demoApi: DemoApi = {
           name: s.name,
           source: s.source,
           status: s.status,
+          includedInAnalysis: s.includedInAnalysis,
+          exclusionReason: s.exclusionReason,
+          excludedAt: s.excludedAt,
+          excludedBy: excludedBy ? { id: excludedBy.id, name: excludedBy.name } : null,
           createdAt: s.createdAt,
           responseCount: rs.length,
           analyzedCount: rs.filter((r) => r.analyzedAt).length,
@@ -1021,6 +1035,27 @@ export const demoApi: DemoApi = {
         };
       });
     return { items, total: items.length };
+  },
+
+  async updateSurvey(projectId, surveyId, body: SurveyUpdate) {
+    await sleep();
+    const survey = surveyOr404(projectId, surveyId);
+    if (body?.includedInAnalysis === false) {
+      const reason = body.exclusionReason?.trim();
+      if (!reason) throw new ApiError(400, "Enter a reason for excluding this survey.");
+      survey.includedInAnalysis = false;
+      survey.exclusionReason = reason;
+      survey.excludedAt = new Date().toISOString();
+      survey.excludedBy = db.users.find((u) => u.role === "admin")?.id ?? null;
+    } else if (body?.includedInAnalysis === true) {
+      survey.includedInAnalysis = true;
+      survey.exclusionReason = null;
+      survey.excludedAt = null;
+      survey.excludedBy = null;
+    } else {
+      throw new ApiError(400, "includedInAnalysis must be true or false.");
+    }
+    return (await demoApi.listSurveys(projectId)).items.find((s) => s.id === surveyId)!;
   },
 
   async getGraph(projectId, filters) {
@@ -1099,6 +1134,7 @@ const ADMIN_ONLY = new Set<string>([
   "updateWeights",
   "rereadResponses",
   "resetProject",
+  "updateSurvey",
 ]);
 
 export function demoApiFor(token: string | undefined): FeedbackApi {

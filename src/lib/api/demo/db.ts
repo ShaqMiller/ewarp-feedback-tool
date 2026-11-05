@@ -11,6 +11,10 @@ export type SurveyRow = {
   name: string;
   source: "google_forms";
   status: "collecting" | "closed";
+  includedInAnalysis: boolean;
+  exclusionReason: string | null;
+  excludedAt: string | null;
+  excludedBy: Id | null;
   createdAt: string;
 };
 export type VendorRow = { id: Id; projectId: Id; name: string };
@@ -72,9 +76,9 @@ export const projects: ProjectRow[] = [
 ];
 
 export const surveys: SurveyRow[] = [
-  { id: "srv_1", projectId: "prj_1", name: "Platform feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(25) },
-  { id: "srv_2", projectId: "prj_2", name: "Field tools feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(3) },
-  { id: "srv_3", projectId: "prj_3", name: "Training records feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(12) },
+  { id: "srv_1", projectId: "prj_1", name: "Platform feedback", source: "google_forms", status: "collecting", includedInAnalysis: true, exclusionReason: null, excludedAt: null, excludedBy: null, createdAt: daysAgo(25) },
+  { id: "srv_2", projectId: "prj_2", name: "Field tools feedback", source: "google_forms", status: "collecting", includedInAnalysis: true, exclusionReason: null, excludedAt: null, excludedBy: null, createdAt: daysAgo(3) },
+  { id: "srv_3", projectId: "prj_3", name: "Training records feedback", source: "google_forms", status: "collecting", includedInAnalysis: true, exclusionReason: null, excludedAt: null, excludedBy: null, createdAt: daysAgo(12) },
 ];
 
 const vendorSeed: VendorRow[] = [
