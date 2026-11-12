@@ -140,6 +140,7 @@ const responseSeed: Record<Id, { surveyId: Id; rows: ResponseSeed[] }> = {
           "Which platform are you answering about?": "Vendor 3",
           "Project Manager": {
             "How would you rate scheduling (1-5)?": "2",
+            "How well can you track who approved each task?": "4",
             "If you rated scheduling low, why?": "Moving one task doesn't move the tasks that depend on it.",
             "What do you like about Vendor 3?": "Simple timeline view.",
             "What don't you like about Vendor 3?": "Can't link tasks across projects.",
