@@ -75,9 +75,9 @@ There are 44 routes: 28 reads (`GET`) and 16 writes. Writes are admin only. Path
 | `/projects/:projectId/responses` | `vendorId`, `surveyId`, `includeExcluded`, `status`, `q`, `sort`, `limit`, `offset`, filters | `{ items, total, facets }` | Responses page |
 | **`POST`** `/projects/:projectId/reset` | body `{ confirm }` | `200` `{ responses, features }` (admin) | Settings → Reset |
 | **`POST`** `/projects/:projectId/responses/reread` | body `{ responseIds? }` | `202` `{ queued }` (admin) | "Reread with AI" on the response page and Surveys page |
-| `/projects/:projectId/responses/:responseId` | | `ResponseDetail` | Response page |
+| `/projects/:projectId/responses/:responseId` | `includeExcluded` | `ResponseDetail` | Response page |
+| **`PATCH`** `/projects/:projectId/responses/:responseId` | body `{ includedInAnalysis, exclusionReason? }` | `200` `{ id, includedInAnalysis, exclusionReason, excludedAt, excludedBy }` (admin) | Response page → Analysis: exclude or count again |
 | `/projects/:projectId/surveys` | | `{ items: Survey[], total }` | Surveys page |
-| **`PATCH`** `/projects/:projectId/surveys/:surveyId` | body `{ includedInAnalysis, exclusionReason? }` | `200` `Survey` | Exclude or restore a survey (admin) |
 | `/projects/:projectId/weights` | | `Weights` | Settings → Weights |
 | **`PUT`** `/projects/:projectId/weights` | body `{ groups?, features? }` | `200` `Weights` | Settings → Weights |
 | `/projects/:projectId/scores` | | `{ items: VendorScore[], total, mix }` | Vendor page "Score" |
@@ -487,13 +487,22 @@ The classifier keeps its own list of responses it has read, so it never reads on
 ### `GET /projects/:projectId/responses/:responseId`
 Used by: the response page `/projects/:projectId/responses/:responseId`. It's opened from any response card's group name, or from the map's "Open response" button.
 
-Responses from excluded surveys return 404 by default. An admin audit view may request `?includeExcluded=true`.
+A response an admin excluded from analysis returns 404 unless the request adds `?includeExcluded=true`. The response page always adds it, so an excluded response can still be opened and counted again.
 
 The shape is the same as a list item, plus:
 - `survey: { id, name }`
 - each mention's `coverage`, so the page can mark gaps
 - `rereadQueued`: an admin asked the AI to read it again and it hasn't yet
-- `answers: [{ question, answer }]`: the survey's other answers beyond likes / dislikes / wants, in the survey's order, without names or contact details. Newer surveys (the role-based one) keep most feedback here and leave likes / dislikes / wants empty; the AI reads these too, so such a response can still link features.
+- `includedInAnalysis`, `exclusionReason`, `excludedAt`, `excludedBy`: whether it counts (see `PATCH` below). List items carry these too.
+- `sections: [{ title, answers: [{ question, values }] }]`: every answer in the submission, grouped the way the form groups them. The role-based survey sends one nested object per role the respondent picked, and each becomes a titled section; a section inside a section is titled `Outer › Inner`, and questions outside any section have `title: null`. `values` has one entry per choice picked (multi-selects), and a rating is its number as text: the page draws it on the scale the question names (e.g. "(1-10)"). Names, contact details, the timestamp, blanks, and answers identical to likes / dislikes / wants are left out. The AI reads these answers too, so a response with empty likes / dislikes / wants can still link features.
+- `answers: [{ question, answer }]`: the older flat list of top-level answers. Kept for older front ends; use `sections`.
+
+### `PATCH /projects/:projectId/responses/:responseId`
+Used by: the **Analysis** card on the response page. Admin only.
+
+For a response that shouldn't count: a test, a duplicate, or a biased answer. Body `{ "includedInAnalysis": false, "exclusionReason": "A vendor employee answered about their own product." }` (the reason is required, up to 2,000 characters). The response stays saved and visible on the Responses page with **Show excluded** (`includeExcluded=true`), but it leaves every count, gap, vendor score, chart and the map, and the AI skips it. AI summaries are cleared so they're rewritten without it. `{ "includedInAnalysis": true }` counts it again. Returns `{ id, includedInAnalysis, exclusionReason, excludedAt, excludedBy }`.
+
+Surveys themselves are never excluded: every survey keeps collecting.
 
 Returns 404 if the response isn't in the project.
 
@@ -507,10 +516,6 @@ Used by: the Surveys page (one card per survey) and the Responses page (the surv
       "name": "Platform feedback",
       "source": "google_forms",
       "status": "collecting",
-      "includedInAnalysis": true,
-      "exclusionReason": null,
-      "excludedAt": null,
-      "excludedBy": null,
       "createdAt": "2026-09-20T12:00:00.000Z",
       "responseCount": 8,
       "analyzedCount": 8,
@@ -525,9 +530,6 @@ Used by: the Surveys page (one card per survey) and the Responses page (the surv
 - `source` is `google_forms` for now. Add values as more survey tools are connected.
 - `status` is `collecting` or `closed`.
 - `vendorCount` is how many distinct vendors the survey's responses are about.
-
-### `PATCH /projects/:projectId/surveys/:surveyId`
-Admin only. Set `includedInAnalysis` to `false` to exclude all of the survey's responses from calculations while retaining them for audit. Include a non-blank `exclusionReason` (up to 1,000 characters). Set it back to `true` to restore the survey. The response is the updated `Survey`, including the exclusion audit metadata.
 
 ### `GET /projects/:projectId/graph`
 Used by: the Relationship map, where `group` comes from its chips.

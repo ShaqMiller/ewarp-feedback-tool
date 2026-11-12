@@ -56,9 +56,10 @@ import type {
   ResponseList,
   ResponseSort,
   ResponseStatus,
+  ResponseUpdate,
+  ResponseUpdateResult,
   ResponseWithMentions,
   Survey,
-  SurveyUpdate,
   VendorSort,
   Weights,
   WeightsUpdate,
@@ -79,7 +80,7 @@ export type ResponseQuery = ProjectFilters & {
   sort?: ResponseSort;
   limit?: number;
   offset?: number;
-  includeExcluded?: boolean; // admin audit view only
+  includeExcluded?: boolean; // also list responses an admin excluded from analysis
 };
 
 export type FeedbackApi = {
@@ -131,10 +132,10 @@ export type FeedbackApi = {
   getScores(projectId: Id): Promise<VendorScoreList>;
   listResponses(projectId: Id, query?: ResponseQuery): Promise<ResponseList>;
   getResponse(projectId: Id, responseId: Id, query?: { includeExcluded?: boolean }): Promise<ResponseDetail>;
+  updateResponse(projectId: Id, responseId: Id, body: ResponseUpdate): Promise<ResponseUpdateResult>;
   rereadResponses(projectId: Id, body?: RereadRequest): Promise<RereadResult>;
   resetProject(projectId: Id, body: ProjectResetRequest): Promise<ProjectResetResult>;
   listSurveys(projectId: Id): Promise<List<Survey>>;
-  updateSurvey(projectId: Id, surveyId: Id, body: SurveyUpdate): Promise<Survey>;
   getGraph(projectId: Id, filters?: ProjectFilters): Promise<ProjectGraph>;
   listActivity(projectId: Id, query?: { limit?: number }): Promise<List<ActivityEvent>>;
 };
@@ -218,9 +219,9 @@ export const api: FeedbackApi = {
   updateVendor: forward("updateVendor"),
   deleteVendor: forward("deleteVendor"),
   updateWeights: forward("updateWeights"),
+  updateResponse: forward("updateResponse"),
   rereadResponses: forward("rereadResponses"),
   resetProject: forward("resetProject"),
-  updateSurvey: forward("updateSurvey"),
 };
 
 // Turns a 404 from the API into the route's not-found page.

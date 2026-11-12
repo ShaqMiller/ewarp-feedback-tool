@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GROUP_LABELS, type ResponseMention, type Sentiment, type SurveyResponse } from "@/lib/api/types";
+import { GROUP_LABELS, type ResponseExclusion, type ResponseMention, type Sentiment, type SurveyResponse } from "@/lib/api/types";
 import { cn, formatDate } from "@/lib/format";
 import { Pill, Skeleton } from "@/components/ui/primitives";
 
@@ -30,22 +30,21 @@ export function ResponseCard({
   mentions,
   showVendor = true,
   linked = true,
-  includeExcluded = false,
 }: {
-  response: SurveyResponse;
+  response: SurveyResponse & Partial<ResponseExclusion>;
   projectId: string;
   highlight?: Sentiment[];
   mentions?: ResponseMention[];
   showVendor?: boolean;
   linked?: boolean;
-  includeExcluded?: boolean;
 }) {
+  const excluded = response.includedInAnalysis === false;
   return (
-    <article className="rounded-[10px] border border-line bg-surface p-4">
+    <article className={cn("rounded-[10px] border bg-surface p-4", excluded ? "border-dashed border-gap/50" : "border-line")}>
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
         {linked ? (
           <Link
-            href={`/projects/${projectId}/responses/${response.id}${includeExcluded ? "?includeExcluded=true" : ""}`}
+            href={`/projects/${projectId}/responses/${response.id}`}
             className="rounded font-semibold text-ink hover:underline"
           >
             {GROUP_LABELS[response.group]}
@@ -64,6 +63,11 @@ export function ResponseCard({
           </>
         )}
         <time dateTime={response.submittedAt}>{formatDate(response.submittedAt)}</time>
+        {excluded && linked && (
+          <span title={response.exclusionReason ?? undefined}>
+            <Pill tone="gap">Excluded</Pill>
+          </span>
+        )}
         {highlight.length > 0 && (
           <span className="flex gap-1.5 sm:ml-auto">
             {highlight.map((k) => (
