@@ -59,15 +59,25 @@ export async function ResponseList({ projectId, query }: { projectId: string; qu
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <FilterChips label="Filter by respondent group" chips={chips} />
-        {!query.status && facets.status.pending > 0 && (
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {!query.status && facets.status.pending > 0 && (
+            <Link
+              href={responsesHref(base, query, { status: "pending" })}
+              scroll={false}
+              className="text-xs font-medium text-accent hover:underline"
+            >
+              {facets.status.pending} waiting for AI
+            </Link>
+          )}
           <Link
-            href={responsesHref(base, query, { status: "pending" })}
+            href={responsesHref(base, query, { includeExcluded: !query.includeExcluded, page: 1 })}
             scroll={false}
-            className="text-xs font-medium text-accent hover:underline"
+            aria-pressed={query.includeExcluded}
+            className="text-xs font-medium text-muted hover:text-ink hover:underline"
           >
-            {facets.status.pending} waiting for AI
+            {query.includeExcluded ? "Hide excluded" : "Show excluded"}
           </Link>
-        )}
+        </span>
       </div>
 
       {items.length === 0 ? (
@@ -93,7 +103,7 @@ export async function ResponseList({ projectId, query }: { projectId: string; qu
           <ul className="grid gap-3">
             {items.map((r) => (
               <li key={r.id}>
-                <ResponseCard response={r} projectId={projectId} mentions={r.mentions} includeExcluded={query.includeExcluded} />
+                <ResponseCard response={r} projectId={projectId} mentions={r.mentions} />
               </li>
             ))}
           </ul>

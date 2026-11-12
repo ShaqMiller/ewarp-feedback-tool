@@ -323,21 +323,40 @@ export type ResponseWithMentions = SurveyResponse & { mentions: ResponseMention[
 export type ResponseStatus = "analyzed" | "pending"; // pending = AI hasn't read it yet
 export type ResponseSort = "newest" | "oldest";
 
-// GET /projects/:projectId/responses
-export type ResponseList = List<ResponseWithMentions> & {
+// Whether a response counts. An admin can exclude one (e.g. a test or a biased answer) with a reason: it stays
+// saved and visible here, but leaves every count, gap, score and the map, and AI skips it. Restoring undoes that.
+export type ResponseExclusion = {
+  includedInAnalysis: boolean;
+  exclusionReason: string | null;
+  excludedAt: string | null;
+  excludedBy: { id: Id; name: string } | null;
+};
+
+// GET /projects/:projectId/responses (excluded responses only with ?includeExcluded=true)
+export type ResponseListItem = ResponseWithMentions & ResponseExclusion;
+export type ResponseList = List<ResponseListItem> & {
   // Counts for the filter chips, after every filter except the one being counted.
   facets: { group: Record<Group, number>; status: Record<ResponseStatus, number> };
 };
 
 // GET /projects/:projectId/responses/:responseId
-export type ResponseDetail = Omit<ResponseWithMentions, "mentions"> & {
+export type ResponseDetail = Omit<ResponseWithMentions, "mentions"> & ResponseExclusion & {
   survey: { id: Id; name: string };
   mentions: (ResponseMention & { coverage: Coverage })[];
   rereadQueued: boolean; // an admin asked the AI to read it again (POST /responses/reread) and it hasn't yet
   // The survey's other written answers, beyond likes / dislikes / wants (e.g. "If you rated X low, why?").
   // Newer surveys keep most feedback here, and AI reads these too. Names and contact details are left out.
   answers: { question: string; answer: string }[];
+  // Every answer, grouped by the form's sections (e.g. one per role picked). title null = outside any section.
+  // values: one per choice picked; a rating is its number as text. Older backends don't send it.
+  sections?: { title: string | null; answers: { question: string; values: string[] }[] }[];
 };
+
+// PATCH /projects/:projectId/responses/:responseId (admin). Excluding needs a reason, for the record.
+export type ResponseUpdate =
+  | { includedInAnalysis: true }
+  | { includedInAnalysis: false; exclusionReason: string };
+export type ResponseUpdateResult = ResponseExclusion & { id: Id };
 
 // GET /projects/:projectId/surveys
 export type Survey = {
@@ -345,10 +364,6 @@ export type Survey = {
   name: string;
   source: "google_forms";
   status: "collecting" | "closed";
-  includedInAnalysis: boolean;
-  exclusionReason: string | null;
-  excludedAt: string | null;
-  excludedBy: { id: Id; name: string } | null;
   createdAt: string;
   responseCount: number;
   analyzedCount: number; // responses AI has read
@@ -356,11 +371,6 @@ export type Survey = {
   lastResponseAt: string | null;
   groups: Record<Group, number>;
 };
-
-// PATCH /projects/:projectId/surveys/:surveyId (admin). Excluding a survey requires an audit reason.
-export type SurveyUpdate =
-  | { includedInAnalysis: true }
-  | { includedInAnalysis: false; exclusionReason: string };
 
 // GET /projects/:projectId/graph
 // Everything the relationship map draws, in one request: it's the one view that needs every node at once.

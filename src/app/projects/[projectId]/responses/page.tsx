@@ -4,7 +4,6 @@ import { api, orNotFound } from "@/lib/api";
 import { plural } from "@/lib/format";
 import { AsyncSlot } from "@/components/ui/AsyncSlot";
 import { XIcon } from "@/components/ui/icons";
-import { Pill } from "@/components/ui/primitives";
 import { ListToolbar } from "@/components/ui/ListToolbar";
 import { TopBar } from "@/components/shell/TopBar";
 import { ResponseList, ResponsesSkeleton } from "@/components/responses/ResponseList";
@@ -53,12 +52,6 @@ export default async function ResponsesPage({ params, searchParams }: PageProps<
             { param: "sort", label: "Sort", value: query.sort, defaultValue: "newest", options: SORT_OPTIONS },
           ]}
         />
-
-        {query.includeExcluded && (
-          <div>
-            <Pill tone="gap">Including responses from excluded surveys</Pill>
-          </div>
-        )}
 
         {query.survey && (
           <div>

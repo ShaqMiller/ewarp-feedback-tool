@@ -9,26 +9,31 @@ import { TopBar } from "@/components/shell/TopBar";
 import { ShowInMapLink } from "@/components/map/ShowInMapLink";
 import { KIND_LABEL, ResponseCard } from "@/components/responses/ResponseCard";
 import { RereadButton } from "@/components/responses/RereadButton";
+import { ResponseAnalysisControl } from "@/components/responses/ResponseAnalysisControl";
+import { SurveyAnswers } from "@/components/responses/SurveyAnswers";
 
 type Props = PageProps<"/projects/[projectId]/responses/[responseId]">;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { projectId, responseId } = await params;
-  const r = await api.getResponse(projectId, responseId).catch(() => null);
+  const r = await api.getResponse(projectId, responseId, { includeExcluded: true }).catch(() => null);
   return { title: r ? `Response from ${GROUP_LABELS[r.group]}` : "Response" };
 }
 
-// Uses GET /projects/:projectId and /responses/:responseId; admins can POST /responses/reread
-export default async function ResponsePage({ params, searchParams }: Props) {
+// Uses GET /projects/:projectId and /responses/:responseId (excluded ones too, so they can be restored);
+// admins can POST /responses/reread and PATCH /responses/:responseId (exclude or count again)
+export default async function ResponsePage({ params }: Props) {
   const { projectId, responseId } = await params;
-  const includeExcluded = (await searchParams).includeExcluded === "true";
   const [project, response, me] = await Promise.all([
     orNotFound(api.getProject(projectId)),
-    orNotFound(api.getResponse(projectId, responseId, { includeExcluded })),
+    orNotFound(api.getResponse(projectId, responseId, { includeExcluded: true })),
     api.getMe(),
   ]);
   const kinds = [...new Set(response.mentions.map((m) => m.kind))];
-  const answers = response.answers ?? []; // older backends don't send them
+  // Older backends send only the flat list of other answers.
+  const sections = response.sections ?? (response.answers?.length ? [{ title: null, answers: response.answers.map((a) => ({ question: a.question, values: [a.answer] })) }] : []);
+  const counted = response.includedInAnalysis !== false; // older backends don't send it
+  const admin = me.role === "admin";
   const details = [
     { label: "Vendor", value: <Link href={`/projects/${projectId}/vendors/${response.vendor.id}`} className="font-medium hover:underline">{response.vendor.name}</Link> },
     { label: "Group", value: GROUP_LABELS[response.group] },
@@ -36,7 +41,7 @@ export default async function ResponsePage({ params, searchParams }: Props) {
     {
       label: "Survey",
       value: (
-        <Link href={`/projects/${projectId}/responses?survey=${response.survey.id}${includeExcluded ? "&includeExcluded=true" : ""}`} className="font-medium hover:underline">
+        <Link href={`/projects/${projectId}/responses?survey=${response.survey.id}`} className="font-medium hover:underline">
           {response.survey.name}
         </Link>
       ),
@@ -55,6 +60,7 @@ export default async function ResponsePage({ params, searchParams }: Props) {
       <main className="flex flex-col gap-5 px-4 py-5 sm:px-6 sm:py-[22px]">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-[22px] font-semibold tracking-[-0.015em]">Response from {GROUP_LABELS[response.group]}</h1>
+          {!counted && <Pill tone="gap">Excluded from analysis</Pill>}
           {response.rereadQueued ? (
             <Pill tone="accent">In queue for AI</Pill>
           ) : (
@@ -68,17 +74,12 @@ export default async function ResponsePage({ params, searchParams }: Props) {
         <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
           <div className="grid gap-4">
             <ResponseCard response={response} projectId={projectId} highlight={kinds} showVendor={false} linked={false} />
-            {answers.length > 0 && (
-              <Card title="Other answers">
-                <p className="-mt-1 mb-3 text-xs text-muted">The rest of this survey. AI reads these too when it links features.</p>
-                <dl className="grid gap-3 text-[13px]">
-                  {answers.map((a, i) => (
-                    <div key={i}>
-                      <dt className="text-xs text-muted">{a.question}</dt>
-                      <dd className="mt-0.5 whitespace-pre-line">{a.answer}</dd>
-                    </div>
-                  ))}
-                </dl>
+            {sections.length > 0 && (
+              <Card title="Survey answers">
+                <p className="-mt-1 mb-4 text-xs text-muted">
+                  Everything else they answered, by section. AI reads these too when it links features.
+                </p>
+                <SurveyAnswers sections={sections} />
               </Card>
             )}
           </div>
@@ -111,13 +112,27 @@ export default async function ResponsePage({ params, searchParams }: Props) {
                   In the AI&apos;s queue. It reads this response again within about a minute; refresh to see new features.
                 </p>
               ) : (
-                me.role === "admin" &&
+                admin &&
+                counted &&
                 response.analyzed && (
                   <div className="mt-3 border-t border-line pt-3">
                     <RereadButton projectId={projectId} responseId={response.id} label="Reread with AI" />
                   </div>
                 )
               )}
+            </Card>
+            <Card title="Analysis">
+              <ResponseAnalysisControl
+                projectId={projectId}
+                responseId={response.id}
+                admin={admin}
+                exclusion={{
+                  includedInAnalysis: counted,
+                  exclusionReason: response.exclusionReason ?? null,
+                  excludedAt: response.excludedAt ?? null,
+                  excludedBy: response.excludedBy ?? null,
+                }}
+              />
             </Card>
             <Card title="Details">
               <dl className="grid gap-2.5 text-[13px]">

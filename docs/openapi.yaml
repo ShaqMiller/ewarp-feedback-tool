@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: eWARP Feedback API
-  version: 1.5.0
+  version: 1.6.0
   description: |
     The contract between the eWARP front end and its backend.
 
@@ -530,7 +530,7 @@ paths:
       parameters:
         - { name: vendorId, in: query, schema: { $ref: "#/components/schemas/Id" } }
         - { name: surveyId, in: query, schema: { $ref: "#/components/schemas/Id" } }
-        - { name: includeExcluded, in: query, description: "Admin audit view. Include responses from surveys excluded from analysis.", schema: { type: boolean, default: false } }
+        - { name: includeExcluded, in: query, description: "Also list responses an admin excluded from analysis (they carry includedInAnalysis false).", schema: { type: boolean, default: false } }
         - { name: status, in: query, schema: { $ref: "#/components/schemas/ResponseStatus" } }
         - { name: q, in: query, description: Case-insensitive search across likes, dislikes and wants, schema: { type: string, maxLength: 100 } }
         - { name: sort, in: query, schema: { type: string, enum: [newest, oldest], default: newest } }
@@ -587,11 +587,27 @@ paths:
     get:
       operationId: getResponse
       summary: One response with its survey and linked features
-      description: "Used by: the response page."
+      description: "Used by: the response page (which always asks for excluded ones too, so they can be restored)."
       parameters:
-        - { name: includeExcluded, in: query, description: "Admin audit view. Return a response from an excluded survey.", schema: { type: boolean, default: false } }
+        - { name: includeExcluded, in: query, description: "Also return the response if an admin excluded it from analysis. Without it, an excluded response is 404.", schema: { type: boolean, default: false } }
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ResponseDetail" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateResponse
+      summary: Exclude a response from analysis, or count it again (admin only)
+      description: >-
+        Used by: the Analysis card on the response page. An excluded response stays saved and visible (with
+        includeExcluded), but leaves every count, gap, vendor score, chart and the map, and the AI skips it. AI summaries
+        are cleared so they're rewritten without it. exclusionReason is required when includedInAnalysis is false.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ResponseUpdate" } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { $ref: "#/components/schemas/ResponseUpdateResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -603,22 +619,6 @@ paths:
       description: "Used by: Surveys page and the Responses page survey filter label."
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SurveyList" } } } }
-        "404": { $ref: "#/components/responses/NotFound" }
-        default: { $ref: "#/components/responses/Error" }
-
-  /projects/{projectId}/surveys/{surveyId}:
-    parameters: [{ $ref: "#/components/parameters/projectId" }, { $ref: "#/components/parameters/surveyId" }]
-    patch:
-      operationId: updateSurvey
-      summary: Include or exclude a survey from analysis (admin only)
-      description: "Excluding preserves the survey and its responses for audit, but removes them from calculated analysis. exclusionReason is required when includedInAnalysis is false."
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/SurveyUpdate" } } }
-      responses:
-        "200": { description: Updated., content: { application/json: { schema: { $ref: "#/components/schemas/Survey" } } } }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -1176,11 +1176,41 @@ components:
       type: object
       required: [items, total]
       properties: { items: { type: array, items: { $ref: "#/components/schemas/ResponseWithMentions" } }, total: { $ref: "#/components/schemas/Count" } }
+    ResponseExclusion:
+      type: object
+      description: Whether a response counts. Excluded ones stay saved but leave every count, score and the map.
+      required: [includedInAnalysis, exclusionReason, excludedAt, excludedBy]
+      properties:
+        includedInAnalysis: { type: boolean }
+        exclusionReason: { type: [string, "null"], maxLength: 2000 }
+        excludedAt: { type: [string, "null"], format: date-time }
+        excludedBy: { oneOf: [{ $ref: "#/components/schemas/NamedRef" }, { type: "null" }] }
+    ResponseUpdate:
+      oneOf:
+        - type: object
+          required: [includedInAnalysis]
+          properties: { includedInAnalysis: { const: true } }
+        - type: object
+          required: [includedInAnalysis, exclusionReason]
+          properties:
+            includedInAnalysis: { const: false }
+            exclusionReason: { type: string, minLength: 1, maxLength: 2000 }
+    ResponseUpdateResult:
+      allOf:
+        - { $ref: "#/components/schemas/ResponseExclusion" }
+        - type: object
+          required: [id]
+          properties: { id: { $ref: "#/components/schemas/Id" } }
     ResponseList:
       type: object
       required: [items, total, facets]
       properties:
-        items: { type: array, items: { $ref: "#/components/schemas/ResponseWithMentions" } }
+        items:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/ResponseWithMentions" }
+              - { $ref: "#/components/schemas/ResponseExclusion" }
         total: { $ref: "#/components/schemas/Count" }
         facets:
           type: object
@@ -1196,9 +1226,28 @@ components:
     ResponseDetail:
       allOf:
         - { $ref: "#/components/schemas/SurveyResponse" }
+        - { $ref: "#/components/schemas/ResponseExclusion" }
         - type: object
           required: [survey, mentions, rereadQueued, answers]
           properties:
+            sections:
+              type: array
+              description: >-
+                Every answer in the submission, grouped by the form's sections (e.g. one per role the respondent picked;
+                a section inside a section is titled "Outer › Inner"). title is null for questions outside any section.
+                values has one entry per choice picked; a rating is its number as text. Names, contact details, the
+                timestamp, blanks, and answers identical to likes / dislikes / wants are left out.
+              items:
+                type: object
+                required: [title, answers]
+                properties:
+                  title: { type: [string, "null"] }
+                  answers:
+                    type: array
+                    items:
+                      type: object
+                      required: [question, values]
+                      properties: { question: { type: string }, values: { type: array, items: { type: string } } }
             answers:
               type: array
               description: >-
@@ -1222,32 +1271,18 @@ components:
 
     Survey:
       type: object
-      required: [id, name, source, status, includedInAnalysis, exclusionReason, excludedAt, excludedBy, createdAt, responseCount, analyzedCount, vendorCount, lastResponseAt, groups]
+      required: [id, name, source, status, createdAt, responseCount, analyzedCount, vendorCount, lastResponseAt, groups]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         name: { type: string }
         source: { type: string, enum: [google_forms], description: Add values as more survey tools are connected }
         status: { type: string, enum: [collecting, closed] }
-        includedInAnalysis: { type: boolean, description: "Whether this survey's responses affect calculated analysis." }
-        exclusionReason: { type: [string, "null"], maxLength: 1000 }
-        excludedAt: { type: [string, "null"], format: date-time }
-        excludedBy: { oneOf: [{ $ref: "#/components/schemas/NamedRef" }, { type: "null" }] }
         createdAt: { $ref: "#/components/schemas/DateTime" }
         responseCount: { $ref: "#/components/schemas/Count" }
         analyzedCount: { $ref: "#/components/schemas/Count" }
         vendorCount: { $ref: "#/components/schemas/Count", description: Distinct vendors the responses are about }
         lastResponseAt: { type: [string, "null"], format: date-time }
         groups: { $ref: "#/components/schemas/GroupCounts" }
-    SurveyUpdate:
-      oneOf:
-        - type: object
-          required: [includedInAnalysis]
-          properties: { includedInAnalysis: { const: true } }
-        - type: object
-          required: [includedInAnalysis, exclusionReason]
-          properties:
-            includedInAnalysis: { const: false }
-            exclusionReason: { type: string, minLength: 1, maxLength: 1000 }
     SurveyList:
       type: object
       required: [items, total]

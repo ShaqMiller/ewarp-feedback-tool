@@ -4,7 +4,6 @@ import { GROUP_LABELS, type Group, type Survey } from "@/lib/api/types";
 import { cn, formatDate, plural } from "@/lib/format";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { EmptyState, Pill, Skeleton } from "@/components/ui/primitives";
-import { SurveyAnalysisControl } from "./SurveyAnalysisControl";
 
 const GROUPS: Group[] = ["pm", "sponsor", "other"];
 const GROUP_BG: Record<Group, string> = { pm: "bg-group-pm", sponsor: "bg-group-sponsor", other: "bg-group-other" };
@@ -19,7 +18,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function SurveyCard({ survey, projectId, admin }: { survey: Survey; projectId: string; admin: boolean }) {
+function SurveyCard({ survey, projectId }: { survey: Survey; projectId: string }) {
   const pending = survey.responseCount - survey.analyzedCount;
   return (
     <article className="flex flex-col gap-4 rounded-[10px] border border-line bg-surface p-4">
@@ -30,13 +29,10 @@ function SurveyCard({ survey, projectId, admin }: { survey: Survey; projectId: s
             {SOURCE_LABEL[survey.source]} · connected {formatDate(survey.createdAt)}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
-          {!survey.includedInAnalysis && <Pill tone="gap">Excluded</Pill>}
-          <Pill tone={survey.status === "collecting" ? "like" : "neutral"}>
-            {survey.status === "collecting" && <span className="size-1.5 rounded-full bg-like" />}
-            {survey.status === "collecting" ? "Collecting" : "Closed"}
-          </Pill>
-        </div>
+        <Pill tone={survey.status === "collecting" ? "like" : "neutral"}>
+          {survey.status === "collecting" && <span className="size-1.5 rounded-full bg-like" />}
+          {survey.status === "collecting" ? "Collecting" : "Closed"}
+        </Pill>
       </header>
 
       <dl className="grid grid-cols-3 gap-3 border-y border-line py-3">
@@ -88,11 +84,9 @@ function SurveyCard({ survey, projectId, admin }: { survey: Survey; projectId: s
         </div>
       )}
 
-      {admin && <SurveyAnalysisControl projectId={projectId} survey={survey} />}
-
       {survey.responseCount > 0 && (
         <Link
-          href={`/projects/${projectId}/responses?survey=${survey.id}${survey.includedInAnalysis ? "" : "&includeExcluded=true"}`}
+          href={`/projects/${projectId}/responses?survey=${survey.id}`}
           className="mt-auto inline-flex items-center gap-1 self-start rounded text-[13px] font-medium text-accent hover:underline"
         >
           View {plural(survey.responseCount, "response")}
@@ -104,7 +98,7 @@ function SurveyCard({ survey, projectId, admin }: { survey: Survey; projectId: s
 }
 
 // Uses GET /projects/:projectId/surveys
-export async function SurveyList({ projectId, admin }: { projectId: string; admin: boolean }) {
+export async function SurveyList({ projectId }: { projectId: string }) {
   const { items } = await api.listSurveys(projectId);
   if (items.length === 0) {
     return (
@@ -117,7 +111,7 @@ export async function SurveyList({ projectId, admin }: { projectId: string; admi
     <ul className="grid gap-4 md:grid-cols-2">
       {items.map((s) => (
         <li key={s.id} className="flex">
-          <SurveyCard survey={s} projectId={projectId} admin={admin} />
+          <SurveyCard survey={s} projectId={projectId} />
         </li>
       ))}
     </ul>

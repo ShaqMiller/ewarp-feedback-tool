@@ -235,13 +235,17 @@ if (!project) {
       await expectStatus(`PUT ${p}/weights as viewer → 403`, () => send("PUT", `${p}/weights`, { groups: [{ key: "pm", weight: 1 }] }, as), 403);
       await expectStatus(`POST ${p}/responses/reread as viewer → 403`, () => send("POST", `${p}/responses/reread`, {}, as), 403);
       await expectStatus(`POST ${p}/reset as viewer → 403`, () => send("POST", `${p}/reset`, { confirm: "x" }, as), 403);
+      if (responseId) {
+        const r = `${p}/responses/${encodeURIComponent(responseId)}`;
+        await expectStatus(`PATCH ${r} as viewer → 403`, () => send("PATCH", r, { includedInAnalysis: true }, as), 403);
+      }
     }
   } else {
     console.log(color(2, "\nViewer checks skipped. Set EWARP_VIEWER_EMAIL and EWARP_VIEWER_PASSWORD to check that viewers get 403."));
   }
 
   if (args.includes("--writes")) {
-    await checkWrites(p, featureId, vendors?.items[0]?.id, weights);
+    await checkWrites(p, featureId, vendors?.items[0]?.id, weights, responseId);
   } else {
     console.log(color(2, "\nWrite routes not checked. Add --writes to create, edit and delete a temporary vendor, feature and user."));
   }
@@ -249,7 +253,7 @@ if (!project) {
 
 // Opt-in: creates a vendor, a manual feature and a user named "Contract check <time>", edits them, then deletes them.
 // Existing data is only touched to write a weight back with the value it already has.
-async function checkWrites(p, featureId, vendorId, weights) {
+async function checkWrites(p, featureId, vendorId, weights, responseId) {
   console.log("\nVendor writes (temporary test vendor)\n");
 
   async function expect(method, path, body, status, schema, extra = () => []) {
@@ -345,6 +349,16 @@ async function checkWrites(p, featureId, vendorId, weights) {
   console.log("\nReread with AI (bad requests only)\n");
   await expect("POST", `${p}/responses/reread`, { responseIds: [] }, 400, "Error");
   await expect("POST", `${p}/responses/reread`, { responseIds: ["__missing__"] }, 404, "Error");
+
+  // Only bad requests: a real one would take a response out of the project's numbers (and clear AI summaries).
+  console.log("\nExclude a response (bad requests only)\n");
+  if (responseId) {
+    const r = `${p}/responses/${encodeURIComponent(responseId)}`;
+    await expect("PATCH", r, { includedInAnalysis: false }, 400, "Error");
+    await expect("PATCH", r, { includedInAnalysis: false, exclusionReason: "   " }, 400, "Error");
+    await expect("PATCH", r, {}, 400, "Error");
+  }
+  await expect("PATCH", `${p}/responses/__missing__`, { includedInAnalysis: true }, 404, "Error");
 
   // Never a real reset: that deletes the project's data. Only a wrong name, which must change nothing.
   console.log("\nReset (wrong confirmation only)\n");

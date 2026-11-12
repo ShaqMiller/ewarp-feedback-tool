@@ -11,10 +11,6 @@ export type SurveyRow = {
   name: string;
   source: "google_forms";
   status: "collecting" | "closed";
-  includedInAnalysis: boolean;
-  exclusionReason: string | null;
-  excludedAt: string | null;
-  excludedBy: Id | null;
   createdAt: string;
 };
 export type VendorRow = { id: Id; projectId: Id; name: string };
@@ -31,8 +27,12 @@ export type ResponseRow = {
   wants: string;
   submittedAt: string;
   analyzedAt: string | null; // null until AI has read it
-  answers?: { question: string; answer: string }[]; // the survey's other answers (GET /responses/:id "answers")
+  raw?: RawAnswers; // the form submission as received; sections are nested (answers.ts reads it)
+  exclusion?: { reason: string; at: string; by: Id | null }; // set while an admin has it excluded from analysis
 };
+// A Google Forms submission: text, a list (multi-select), or a section holding more questions.
+export type RawAnswer = string | string[] | RawAnswers;
+export type RawAnswers = { [question: string]: RawAnswer };
 export type MentionRow = { id: Id; responseId: Id; featureId: Id; kind: Sentiment };
 // A like / dislike / want an admin entered by hand. Counts everywhere a mention does.
 export type FeedbackRow = {
@@ -76,9 +76,9 @@ export const projects: ProjectRow[] = [
 ];
 
 export const surveys: SurveyRow[] = [
-  { id: "srv_1", projectId: "prj_1", name: "Platform feedback", source: "google_forms", status: "collecting", includedInAnalysis: true, exclusionReason: null, excludedAt: null, excludedBy: null, createdAt: daysAgo(25) },
-  { id: "srv_2", projectId: "prj_2", name: "Field tools feedback", source: "google_forms", status: "collecting", includedInAnalysis: true, exclusionReason: null, excludedAt: null, excludedBy: null, createdAt: daysAgo(3) },
-  { id: "srv_3", projectId: "prj_3", name: "Training records feedback", source: "google_forms", status: "collecting", includedInAnalysis: true, exclusionReason: null, excludedAt: null, excludedBy: null, createdAt: daysAgo(12) },
+  { id: "srv_1", projectId: "prj_1", name: "Platform feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(25) },
+  { id: "srv_2", projectId: "prj_2", name: "Field tools feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(3) },
+  { id: "srv_3", projectId: "prj_3", name: "Training records feedback", source: "google_forms", status: "collecting", createdAt: daysAgo(12) },
 ];
 
 const vendorSeed: VendorRow[] = [
@@ -132,7 +132,27 @@ const responseSeed: Record<Id, { surveyId: Id; rows: ResponseSeed[] }> = {
       { id: "rsp_4", group: "sponsor", vendorId: "vnd_3", daysAgo: 14, likes: "Support answers fast.", dislikes: "Pricing is unclear.", wants: "A clear audit log of who changed what.", mentions: [["ftr_12", "want"]] },
       { id: "rsp_5", group: "other", vendorId: "vnd_2", daysAgo: 12, likes: "Templates save a lot of time.", dislikes: "Hard to find older versions.", wants: "Version history with a compare view.", mentions: [["ftr_8", "like"], ["ftr_9", "want"]] },
       { id: "rsp_6", group: "other", vendorId: "vnd_3", daysAgo: 8, likes: "Works well offline.", dislikes: "Syncing is slow on large files.", wants: "Notifications only for things I own.", mentions: [["ftr_10", "like"], ["ftr_11", "dislike"], ["ftr_5", "want"]] },
-      { id: "rsp_7", group: "pm", vendorId: "vnd_3", daysAgo: 5, answers: [{ question: "How would you rate scheduling (1-5)?", answer: "2" }, { question: "If you rated scheduling low, why?", answer: "Moving one task doesn't move the tasks that depend on it." }], likes: "Simple timeline view.", dislikes: "Can't link tasks across projects.", wants: "Cross-project task links.", mentions: [["ftr_14", "like"], ["ftr_15", "want"]] },
+      { id: "rsp_7", group: "pm", vendorId: "vnd_3", daysAgo: 5, raw: {
+          Timestamp: "11/5/2026 9:41:12",
+          "Full name": "Jordan Lee",
+          "Email address": "jordan.lee@example.com",
+          "What is your role?": ["Project Manager", "Data Cell"],
+          "Which platform are you answering about?": "Vendor 3",
+          "Project Manager": {
+            "How would you rate scheduling (1-5)?": "2",
+            "If you rated scheduling low, why?": "Moving one task doesn't move the tasks that depend on it.",
+            "What do you like about Vendor 3?": "Simple timeline view.",
+            "What don't you like about Vendor 3?": "Can't link tasks across projects.",
+            "What additions would make Vendor 3 more useful?": "Cross-project task links.",
+          },
+          "Data Cell": {
+            "How satisfied are you with data exports? (1-10)": "8",
+            "Which exports do you use?": ["CSV", "Excel"],
+            "Anything that slows your reporting down?": "Exports drop the custom fields we add.",
+          },
+          "Anything else we should know?": "",
+        },
+        likes: "Simple timeline view.", dislikes: "Can't link tasks across projects.", wants: "Cross-project task links.", mentions: [["ftr_14", "like"], ["ftr_15", "want"]] },
       { id: "rsp_8", group: "pm", vendorId: "vnd_1", daysAgo: 1, likes: "Easy to share reports with my team. The dashboard helps too.", dislikes: "No bulk editing.", wants: "Bulk edit for many items at once.", mentions: [["ftr_16", "like"], ["ftr_1", "like"], ["ftr_13", "want"]] },
     ],
   },

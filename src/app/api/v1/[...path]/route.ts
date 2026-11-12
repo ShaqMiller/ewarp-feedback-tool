@@ -19,7 +19,7 @@ import type {
   UserUpdate,
   VendorCreate,
   VendorUpdate,
-  SurveyUpdate,
+  ResponseUpdate,
   WeightsUpdate,
 } from "@/lib/api/types";
 
@@ -158,7 +158,7 @@ const WRITE_ROUTES: [method: string, pattern: string, status: number, handler: W
   ["DELETE", "users/:userId", 204, (api, p) => api.deleteUser(p.userId)],
   ["POST", "projects/:projectId/vendors", 201, (api, p, body) => api.createVendor(p.projectId, body as VendorCreate)],
   ["PATCH", "projects/:projectId/vendors/:vendorId", 200, (api, p, body) => api.updateVendor(p.projectId, p.vendorId, body as VendorUpdate)],
-  ["PATCH", "projects/:projectId/surveys/:surveyId", 200, (api, p, body) => api.updateSurvey(p.projectId, p.surveyId, body as SurveyUpdate)],
+  ["PATCH", "projects/:projectId/responses/:responseId", 200, (api, p, body) => api.updateResponse(p.projectId, p.responseId, body as ResponseUpdate)],
   ["DELETE", "projects/:projectId/vendors/:vendorId", 204, (api, p) => api.deleteVendor(p.projectId, p.vendorId)],
   ["POST", "projects/:projectId/features", 201, (api, p, body) => api.createFeature(p.projectId, body as FeatureCreate)],
   ["PATCH", "projects/:projectId/features/:featureId", 200, (api, p, body) => api.updateFeature(p.projectId, p.featureId, body as FeatureUpdate)],
