@@ -147,6 +147,7 @@ const responseSeed: Record<Id, { surveyId: Id; rows: ResponseSeed[] }> = {
           },
           "Data Cell": {
             "How satisfied are you with data exports? (1-10)": "8",
+            "How would you rate the mobile app? (1-10)": "0",
             "Which exports do you use?": ["CSV", "Excel"],
             "Anything that slows your reporting down?": "Exports drop the custom fields we add.",
           },
