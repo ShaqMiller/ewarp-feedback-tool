@@ -7,7 +7,6 @@ type Answer = Section["answers"][number];
 type Scale = { min: number; max: number };
 
 // "Rate X (1-10)", "from 1 to 5", "on a scale of 1–7", "out of 10": the scale the question names, if any.
-// A question that only says it's a rating ("How would you rate…", "satisfaction") is read as 1–10.
 function scaleOf(question: string): Scale | null {
   const range = question.match(/(\d+)\s*(?:-|–|—|to)\s*(\d+)/i);
   if (range) {
@@ -15,8 +14,7 @@ function scaleOf(question: string): Scale | null {
     if (min < max && max <= 100) return { min: Math.max(min, 1), max };
   }
   const outOf = question.match(/out of (\d+)/i);
-  if (outOf) return { min: 1, max: Number(outOf[1]) };
-  return /\b(rate|rating|scale|score|satisf)/i.test(question) ? { min: 1, max: 10 } : null;
+  return outOf ? { min: 1, max: Number(outOf[1]) } : null;
 }
 
 // Low third red, middle amber, top third green: 1–4 / 5–7 / 8–10 on a 1–10 scale, 1–2 / 3 / 4–5 on 1–5.
@@ -77,11 +75,15 @@ function Rating({ value, scale }: { value: number; scale: Scale }) {
 }
 
 // The question's scale and the number, when the answer is a rating; "na" when they answered 0.
+// Any answer that's just a whole number counts as a rating. If the question doesn't name its scale,
+// it's read as 1–5 (1–10 when the answer is above 5); numbers above 10 stay plain text.
 function ratingOf(answer: Answer): { scale: Scale; value: number | "na" } | null {
   if (answer.values.length !== 1) return null;
-  const scale = scaleOf(answer.question);
-  const n = Number(answer.values[0].trim());
-  if (!scale || answer.values[0].trim() === "" || !Number.isInteger(n)) return null;
+  const text = answer.values[0].trim();
+  if (!/^\d{1,3}$/.test(text)) return null;
+  const n = Number(text);
+  const scale = scaleOf(answer.question) ?? (n <= 5 ? { min: 1, max: 5 } : n <= 10 ? { min: 1, max: 10 } : null);
+  if (!scale) return null;
   if (n === 0) return { scale, value: "na" };
   return n >= scale.min && n <= scale.max ? { scale, value: n } : null;
 }
